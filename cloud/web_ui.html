@@ -448,7 +448,53 @@
 
     micBtn.addEventListener('click', toggleListening);
 
-    // 3. Send Commands to Cloud Brain
+    // 3. Connect to Web Real-Time WebSocket for Live Transcripts & Audio
+    let ws = null;
+    function connectWebWS() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = proto + '//' + window.location.host + '/ws/web';
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        console.log('Web real-time socket connected');
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'transcript') {
+            if (msg.role === 'assistant') {
+              appendMsg('ai', msg.text);
+              statusSubtitle.textContent = msg.text;
+              speakTextAloud(msg.text);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        setTimeout(connectWebWS, 3000);
+      };
+    }
+    connectWebWS();
+
+    function speakTextAloud(text) {
+      if ('speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 1.05;
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        } catch (err) {
+          console.warn('Speech synthesis error:', err);
+        }
+      }
+    }
+
+    // 4. Send Commands to Cloud Brain
     async function sendText(text) {
       text = text.trim();
       if (!text) return;
@@ -457,17 +503,19 @@
       cmdInput.value = '';
       statusSubtitle.textContent = 'Brahma is thinking...';
 
-      try {
-        const res = await fetch('/api/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: text })
-        });
-        const data = await res.json();
-        statusSubtitle.textContent = 'Command dispatched to Cloud Brain.';
-      } catch (err) {
-        appendMsg('sys', 'Failed to send command: ' + err.message);
-        statusSubtitle.textContent = 'Error delivering command.';
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'text_command', text: text }));
+      } else {
+        try {
+          await fetch('/api/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+          });
+        } catch (err) {
+          appendMsg('sys', 'Failed to send command: ' + err.message);
+          statusSubtitle.textContent = 'Error delivering command.';
+        }
       }
     }
 

@@ -147,6 +147,7 @@ app.add_middleware(
 dispatcher = WebSocketToolDispatcher()
 brain: Optional[CloudBrain] = None
 server_config = load_server_config()
+web_clients: set[WebSocket] = set()
 
 
 def broadcast_audio_to_laptop(pcm_chunk: bytes):
@@ -157,6 +158,16 @@ def broadcast_audio_to_laptop(pcm_chunk: bytes):
         asyncio.create_task(dispatcher.laptop_ws.send_text(msg.to_json()))
 
 
+def broadcast_transcript_to_web(role: str, text: str):
+    """Broadcasts user and assistant transcripts to connected browser clients."""
+    payload = json.dumps({"type": "transcript", "role": role, "text": text})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(payload))
+        except Exception:
+            pass
+
+
 @app.on_event("startup")
 async def on_startup():
     global brain
@@ -164,6 +175,7 @@ async def on_startup():
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
         on_audio_out=broadcast_audio_to_laptop,
+        on_transcript=broadcast_transcript_to_web,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
     )
     # Start Gemini Live background loop
@@ -201,6 +213,27 @@ async def post_command(data: Dict[str, Any]):
         raise HTTPException(status_code=503, detail="Brain not ready.")
     await brain.handle_text_command(text)
     return {"status": "command_queued", "text": text}
+
+
+@app.websocket("/ws/web")
+async def websocket_web(websocket: WebSocket):
+    """Real-time WebSocket connection for web browser interface."""
+    await websocket.accept()
+    web_clients.add(websocket)
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            data = json.loads(raw)
+            if data.get("type") == "text_command":
+                text = data.get("text", "").strip()
+                if text and brain:
+                    await brain.handle_text_command(text)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning(f"Web client error: {exc}")
+    finally:
+        web_clients.discard(websocket)
 
 
 @app.websocket("/ws/node")

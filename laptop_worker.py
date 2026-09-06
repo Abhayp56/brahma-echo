@@ -164,10 +164,15 @@ class LaptopWorker:
 
     def queue_mic_audio(self, raw_pcm: bytes):
         """Callback to send captured microphone audio chunk over WebSocket."""
-        if self.ws and not self.ws.closed:
+        if not getattr(self, "is_authenticated", False) or not self.ws or getattr(self.ws, "closed", True):
+            return
+        try:
             b64_data = base64.b64encode(raw_pcm).decode("ascii")
             msg = build_message(ProtocolTypes.AUDIO_CHUNK, {"data": b64_data})
-            asyncio.create_task(self.ws.send(msg.to_json()))
+            if self.loop and self.loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.ws.send(msg.to_json()), self.loop)
+        except Exception:
+            pass
 
     async def _handle_execute_tool(self, req_id: str, payload: Dict[str, Any]):
         """Execute local tool on this PC and return results to cloud server."""
@@ -188,48 +193,54 @@ class LaptopWorker:
             logger.info(f"Sent result for '{tool_name}' back to Cloud.")
 
     async def _connect_and_listen(self):
+        self.is_authenticated = False
         logger.info(f"Connecting to Brahma Cloud Brain at {self.server_url}...")
-        async with websockets.connect(self.server_url, ping_interval=20, ping_timeout=20) as ws:
-            self.ws = ws
-            logger.info("Connected to server. Sending authentication handshake...")
+        try:
+            async with websockets.connect(self.server_url, ping_interval=20, ping_timeout=20) as ws:
+                logger.info("Connected to server. Sending authentication handshake...")
 
-            # 1. Send AUTH
-            auth_msg = build_message(
-                ProtocolTypes.AUTH,
-                payload={
-                    "token": self.auth_token,
-                    "device_name": self.device_name,
-                    "platform": sys.platform,
-                },
-            )
-            await ws.send(auth_msg.to_json())
+                # 1. Send AUTH
+                auth_msg = build_message(
+                    ProtocolTypes.AUTH,
+                    payload={
+                        "token": self.auth_token,
+                        "device_name": self.device_name,
+                        "platform": sys.platform,
+                    },
+                )
+                await ws.send(auth_msg.to_json())
 
-            # 2. Wait for AUTH_ACK
-            ack_raw = await ws.recv()
-            ack = parse_message(ack_raw)
-            if ack.type != ProtocolTypes.AUTH_ACK:
-                logger.error(f"Authentication rejected by Cloud Server: {ack.payload}")
-                return
+                # 2. Wait for AUTH_ACK
+                ack_raw = await ws.recv()
+                ack = parse_message(ack_raw)
+                if ack.type != ProtocolTypes.AUTH_ACK:
+                    logger.error(f"Authentication rejected by Cloud Server: {ack.payload}")
+                    return
 
-            logger.info("🟢 Authenticated with Cloud Brain! Ready to execute desktop tasks.")
+                self.ws = ws
+                self.is_authenticated = True
+                logger.info("🟢 Authenticated with Cloud Brain! Ready to execute desktop tasks.")
 
-            # 3. Message dispatch loop
-            async for raw in ws:
-                msg = parse_message(raw)
+                # 3. Message dispatch loop
+                async for raw in ws:
+                    msg = parse_message(raw)
 
-                if msg.type == ProtocolTypes.EXECUTE_TOOL:
-                    asyncio.create_task(self._handle_execute_tool(msg.request_id, msg.payload))
+                    if msg.type == ProtocolTypes.EXECUTE_TOOL:
+                        asyncio.create_task(self._handle_execute_tool(msg.request_id, msg.payload))
 
-                elif msg.type == ProtocolTypes.AUDIO_CHUNK:
-                    # Received speech audio from Cloud Brain
-                    b64_data = msg.payload.get("data", "")
-                    if b64_data and self.audio_worker:
-                        pcm_bytes = base64.b64decode(b64_data)
-                        await self.audio_worker.audio_out_queue.put(pcm_bytes)
+                    elif msg.type == ProtocolTypes.AUDIO_CHUNK:
+                        # Received speech audio from Cloud Brain
+                        b64_data = msg.payload.get("data", "")
+                        if b64_data and self.audio_worker:
+                            pcm_bytes = base64.b64decode(b64_data)
+                            await self.audio_worker.audio_out_queue.put(pcm_bytes)
 
-                elif msg.type == ProtocolTypes.PING:
-                    pong = build_message(ProtocolTypes.PONG, request_id=msg.request_id)
-                    await ws.send(pong.to_json())
+                    elif msg.type == ProtocolTypes.PING:
+                        pong = build_message(ProtocolTypes.PONG, request_id=msg.request_id)
+                        await ws.send(pong.to_json())
+        finally:
+            self.is_authenticated = False
+            self.ws = None
 
     async def run(self):
         self.loop = asyncio.get_event_loop()

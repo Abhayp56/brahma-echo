@@ -255,48 +255,48 @@ class CloudBrain:
                     self.log("🟢 Gemini Live API session connected and online.")
 
                     out_buf, in_buf = [], []
+                    while True:
+                        async for response in self.session.receive():
+                            # Handle audio output from Gemini
+                            if response.data:
+                                if self.on_audio_out:
+                                    self.on_audio_out(response.data)
 
-                    async for response in self.session.receive():
-                        # Handle audio output from Gemini
-                        if response.data:
-                            if self.on_audio_out:
-                                self.on_audio_out(response.data)
+                            # Handle transcriptions
+                            if response.server_content:
+                                sc = response.server_content
+                                if sc.output_transcription and sc.output_transcription.text:
+                                    txt = sc.output_transcription.text.strip()
+                                    if txt:
+                                        out_buf.append(txt)
 
-                        # Handle transcriptions
-                        if response.server_content:
-                            sc = response.server_content
-                            if sc.output_transcription and sc.output_transcription.text:
-                                txt = sc.output_transcription.text.strip()
-                                if txt:
-                                    out_buf.append(txt)
+                                if sc.input_transcription and sc.input_transcription.text:
+                                    txt = sc.input_transcription.text.strip()
+                                    if txt:
+                                        in_buf.append(txt)
 
-                            if sc.input_transcription and sc.input_transcription.text:
-                                txt = sc.input_transcription.text.strip()
-                                if txt:
-                                    in_buf.append(txt)
+                                if sc.turn_complete:
+                                    full_in = " ".join(in_buf).strip()
+                                    if full_in:
+                                        self.log(f"User: {full_in}")
+                                        if self.on_transcript:
+                                            self.on_transcript("user", full_in)
+                                    in_buf = []
 
-                            if sc.turn_complete:
-                                full_in = " ".join(in_buf).strip()
-                                if full_in:
-                                    self.log(f"User: {full_in}")
-                                    if self.on_transcript:
-                                        self.on_transcript("user", full_in)
-                                in_buf = []
+                                    full_out = " ".join(out_buf).strip()
+                                    if full_out:
+                                        self.log(f"Brahma: {full_out}")
+                                        if self.on_transcript:
+                                            self.on_transcript("assistant", full_out)
+                                    out_buf = []
 
-                                full_out = " ".join(out_buf).strip()
-                                if full_out:
-                                    self.log(f"Brahma: {full_out}")
-                                    if self.on_transcript:
-                                        self.on_transcript("assistant", full_out)
-                                out_buf = []
-
-                        # Handle tool call requests from Gemini
-                        if response.tool_call:
-                            fn_responses = []
-                            for fc in response.tool_call.function_calls:
-                                fr = await self._execute_tool_call(fc)
-                                fn_responses.append(fr)
-                            await self.session.send_tool_response(function_responses=fn_responses)
+                            # Handle tool call requests from Gemini
+                            if response.tool_call:
+                                fn_responses = []
+                                for fc in response.tool_call.function_calls:
+                                    fr = await self._execute_tool_call(fc)
+                                    fn_responses.append(fr)
+                                await self.session.send_tool_response(function_responses=fn_responses)
 
             except Exception as exc:
                 self.log(f"⚠️ Gemini Live disconnected: {exc}. Reconnecting in 5s...")
