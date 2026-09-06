@@ -246,7 +246,7 @@ class CloudBrain:
             progress_msg = f"Working on {clean_name} on your laptop..."
 
         if self.on_transcript:
-            self.on_transcript("assistant", progress_msg)
+            self.on_transcript("task_progress", progress_msg)
 
         try:
             self.log(f"🚀 Dispatching '{name}' to connected laptop worker...")

@@ -554,13 +554,12 @@
           if (msg.type === 'audio_chunk') {
             playPcmChunk(msg.data);
           } else if (msg.type === 'transcript') {
-            if (msg.role === 'assistant') {
+            if (msg.role === 'task_progress') {
+              appendMsg('sys', '⚡ ' + msg.text);
+              statusSubtitle.textContent = msg.text;
+            } else if (msg.role === 'assistant') {
               appendMsg('ai', msg.text);
               statusSubtitle.textContent = msg.text;
-              // If no live native audio chunks were received for this turn, fall back to browser TTS
-              if (!hasReceivedAudioThisTurn) {
-                speakTextAloud(msg.text);
-              }
               hasReceivedAudioThisTurn = false;
             } else if (msg.role === 'user') {
               hasReceivedAudioThisTurn = false;
@@ -576,20 +575,6 @@
       };
     }
     connectWebWS();
-
-    function speakTextAloud(text) {
-      if ('speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.rate = 1.05;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        } catch (err) {
-          console.warn('Speech synthesis error:', err);
-        }
-      }
-    }
 
     // 5. Send Commands to Cloud Brain
     async function sendText(text) {
@@ -616,7 +601,6 @@
           if (data.reply) {
             appendMsg('ai', data.reply);
             statusSubtitle.textContent = data.reply;
-            speakTextAloud(data.reply);
           }
         } catch (err) {
           appendMsg('sys', 'Failed to send command: ' + err.message);
