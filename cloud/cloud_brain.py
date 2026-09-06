@@ -121,6 +121,7 @@ class CloudBrain:
         self.audio_out_queue: asyncio.Queue = asyncio.Queue()
         self.is_running = False
         self.is_speaking = False
+        self._pending_text_futures: List[asyncio.Future] = []
 
     def log(self, text: str):
         if self.on_log:
@@ -175,15 +176,31 @@ class CloudBrain:
         except Exception as e:
             logger.error(f"Failed to forward realtime audio: {e}")
 
-    async def handle_text_command(self, text: str):
+    async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
         if not self.session:
-            return
+            return None
+        future: Optional[asyncio.Future] = None
+        if wait_for_response:
+            loop = self._loop or asyncio.get_event_loop()
+            future = loop.create_future()
+            self._pending_text_futures.append(future)
         try:
             self.log(f"User (Text): {text}")
             await self.session.send(input=text, end_of_turn=True)
+            if future:
+                try:
+                    return await asyncio.wait_for(future, timeout=timeout)
+                except asyncio.TimeoutError:
+                    self.log("Timed out waiting for model turn complete.")
+                    return None
+            return None
         except Exception as e:
             logger.error(f"Failed to send text input: {e}")
+            return None
+        finally:
+            if future and future in self._pending_text_futures:
+                self._pending_text_futures.remove(future)
 
     async def _execute_tool_call(self, fc) -> types.FunctionResponse:
         """Route tool call: process cloud-native tools locally, route desktop tools to laptop."""
@@ -270,6 +287,13 @@ class CloudBrain:
                                     if txt:
                                         out_buf.append(txt)
 
+                                if sc.model_turn and sc.model_turn.parts:
+                                    for part in sc.model_turn.parts:
+                                        if getattr(part, "text", None) and not getattr(part, "thought", False):
+                                            p_txt = part.text.strip()
+                                            if p_txt and p_txt not in out_buf:
+                                                out_buf.append(p_txt)
+
                                 if sc.input_transcription and sc.input_transcription.text:
                                     txt = sc.input_transcription.text.strip()
                                     if txt:
@@ -289,6 +313,11 @@ class CloudBrain:
                                         if self.on_transcript:
                                             self.on_transcript("assistant", full_out)
                                     out_buf = []
+
+                                    # Resolve any waiting HTTP or RPC command callers
+                                    for fut in list(self._pending_text_futures):
+                                        if not fut.done():
+                                            fut.set_result(full_out)
 
                             # Handle tool call requests from Gemini
                             if response.tool_call:

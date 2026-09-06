@@ -205,14 +205,14 @@ async def get_status():
 
 @app.post("/api/command")
 async def post_command(data: Dict[str, Any]):
-    """Inject a text command into the Cloud Brain."""
+    """Inject a text command into the Cloud Brain and return the assistant response."""
     text = data.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Missing 'text' field.")
     if not brain:
         raise HTTPException(status_code=503, detail="Brain not ready.")
-    await brain.handle_text_command(text)
-    return {"status": "command_queued", "text": text}
+    reply = await brain.handle_text_command(text, wait_for_response=True, timeout=20.0)
+    return {"status": "success", "text": text, "reply": reply or "Done."}
 
 
 @app.websocket("/ws/web")

@@ -407,18 +407,34 @@
       };
 
       recognition.onresult = (event) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+        let interimTranscript = '';
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
         }
-        statusSubtitle.textContent = '"' + transcript + '"';
-        if (event.results[0].isFinal) {
-          sendText(transcript);
+        if (interimTranscript) {
+          statusSubtitle.textContent = '"' + interimTranscript + '"';
+        }
+        if (finalTranscript) {
+          statusSubtitle.textContent = '"' + finalTranscript + '"';
+          sendText(finalTranscript);
         }
       };
 
       recognition.onerror = (e) => {
         console.warn('Speech error:', e);
+        if (e.error === 'not-allowed') {
+          appendMsg('sys', 'Microphone permission blocked. Please allow mic access in your browser address bar.');
+          statusSubtitle.textContent = 'Microphone permission denied.';
+        } else if (e.error === 'no-speech') {
+          statusSubtitle.textContent = 'No speech detected. Click the orb to speak.';
+        } else {
+          statusSubtitle.textContent = 'Mic status: ' + e.error;
+        }
         stopListening();
       };
 
@@ -435,7 +451,11 @@
       if (isRecording) {
         recognition.stop();
       } else {
-        recognition.start();
+        try {
+          recognition.start();
+        } catch (err) {
+          console.warn('Start recognition error:', err);
+        }
       }
     }
 
@@ -507,11 +527,17 @@
         ws.send(JSON.stringify({ type: 'text_command', text: text }));
       } else {
         try {
-          await fetch('/api/command', {
+          const res = await fetch('/api/command', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: text })
           });
+          const data = await res.json();
+          if (data.reply) {
+            appendMsg('ai', data.reply);
+            statusSubtitle.textContent = data.reply;
+            speakTextAloud(data.reply);
+          }
         } catch (err) {
           appendMsg('sys', 'Failed to send command: ' + err.message);
           statusSubtitle.textContent = 'Error delivering command.';

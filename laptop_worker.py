@@ -74,12 +74,14 @@ class AudioWorker:
 
     def __init__(self, send_audio_cb):
         self.send_audio_cb = send_audio_cb
-        self.audio_out_queue: asyncio.Queue = asyncio.Queue()
+        self.audio_out_queue: Optional[asyncio.Queue] = None
+        self.mic_stream = None
         self.is_running = False
         self.is_muted = False
         self.is_speaking = False
 
     def start_playback_loop(self, loop: asyncio.AbstractEventLoop):
+        self.audio_out_queue = asyncio.Queue()
         try:
             import sounddevice as sd
             logger.info("Initializing audio output stream (24kHz)...")
@@ -95,10 +97,11 @@ class AudioWorker:
                     stream.start()
                     while self.is_running:
                         try:
-                            future = asyncio.run_coroutine_threadsafe(self.audio_out_queue.get(), loop)
-                            chunk = future.result(timeout=1.0)
-                            self.is_speaking = True
-                            stream.write(chunk)
+                            if self.audio_out_queue:
+                                future = asyncio.run_coroutine_threadsafe(self.audio_out_queue.get(), loop)
+                                chunk = future.result(timeout=1.0)
+                                self.is_speaking = True
+                                stream.write(chunk)
                         except (asyncio.TimeoutError, Exception):
                             self.is_speaking = False
                     stream.stop()
@@ -129,16 +132,16 @@ class AudioWorker:
                     raw_pcm = indata.tobytes()
                     loop.call_soon_threadsafe(self.send_audio_cb, raw_pcm)
 
-            stream = sd.InputStream(
+            self.mic_stream = sd.InputStream(
                 samplerate=SEND_SAMPLE_RATE,
                 channels=CHANNELS,
                 dtype="int16",
                 blocksize=CHUNK_SIZE,
                 callback=mic_callback,
             )
-            stream.start()
+            self.mic_stream.start()
             logger.info("🎤 Microphone streaming active.")
-            return stream
+            return self.mic_stream
         except Exception as e:
             logger.warning(f"Microphone input disabled or unavailable: {e}")
             return None
