@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brahma Echo — Cloud Voice & Brain Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #05070a;
+      --panel: rgba(13, 17, 24, 0.75);
+      --panel-border: rgba(255, 179, 0, 0.2);
+      --primary: #ffb300;
+      --primary-glow: rgba(255, 179, 0, 0.4);
+      --accent: #ffe066;
+      --green: #00ff88;
+      --red: #ff4444;
+      --text: #f0f4f8;
+      --text-muted: #8b949e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(circle at 50% 20%, rgba(255, 179, 0, 0.08) 0%, transparent 60%),
+        linear-gradient(to bottom, #05070a 0%, #020305 100%);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      overflow-x: hidden;
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      padding: 24px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #ffb300, #ff8000);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #000;
+      font-size: 20px;
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
+
+    .brand h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .brand span {
+      font-size: 12px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      display: block;
+      font-weight: 500;
+    }
+
+    .device-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel);
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--panel-border);
+      font-size: 13px;
+      backdrop-filter: blur(12px);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+      transition: all 0.3s ease;
+    }
+
+    .dot.online {
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+    }
+
+    main {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      flex: 1;
+      justify-content: center;
+      gap: 32px;
+    }
+
+    /* Orb & Voice Section */
+    .orb-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 240px;
+      height: 240px;
+    }
+
+    .orb-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px dashed rgba(255, 179, 0, 0.25);
+      animation: rotate 25s linear infinite;
+    }
+
+    .ring-1 { width: 230px; height: 230px; }
+    .ring-2 { width: 190px; height: 190px; animation-direction: reverse; border-style: solid; border-color: rgba(255, 179, 0, 0.12); }
+
+    .mic-button {
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 179, 0, 0.2) 0%, rgba(7, 8, 11, 0.9) 70%);
+      border: 2px solid var(--primary);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--primary);
+      box-shadow: 0 0 30px rgba(255, 179, 0, 0.2), inset 0 0 20px rgba(255, 179, 0, 0.15);
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+      z-index: 2;
+    }
+
+    .mic-button:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 45px rgba(255, 179, 0, 0.4), inset 0 0 25px rgba(255, 179, 0, 0.3);
+    }
+
+    .mic-button.active {
+      background: radial-gradient(circle, rgba(0, 255, 136, 0.3) 0%, rgba(7, 8, 11, 0.9) 70%);
+      border-color: var(--green);
+      color: var(--green);
+      box-shadow: 0 0 50px rgba(0, 255, 136, 0.5), inset 0 0 30px rgba(0, 255, 136, 0.3);
+      animation: pulse 1.5s infinite alternate;
+    }
+
+    .mic-icon {
+      width: 38px;
+      height: 38px;
+      fill: currentColor;
+    }
+
+    .mic-label {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1.0); }
+      100% { transform: scale(1.08); }
+    }
+
+    /* Live Voice Subtitle Box */
+    .status-text {
+      text-align: center;
+      min-height: 28px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    /* Dialogue & History Box */
+    .chat-box {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      backdrop-filter: blur(16px);
+      padding: 16px;
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .msg {
+      padding: 8px 12px;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+
+    .msg.user {
+      background: rgba(255, 179, 0, 0.1);
+      border-left: 3px solid var(--primary);
+      color: #fff;
+    }
+
+    .msg.ai {
+      background: rgba(255, 255, 255, 0.04);
+      border-left: 3px solid var(--green);
+      color: #d1d5db;
+    }
+
+    .msg.sys {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    /* Text Command Input Bar */
+    .input-bar {
+      width: 100%;
+      display: flex;
+      gap: 10px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 6px 8px;
+      backdrop-filter: blur(12px);
+    }
+
+    .input-bar input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 14px;
+      padding: 8px 12px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .input-bar input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-bar button {
+      background: linear-gradient(135deg, var(--primary), #e69500);
+      color: #000;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .input-bar button:hover {
+      opacity: 0.9;
+    }
+
+    footer {
+      width: 100%;
+      max-width: 900px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="logo-badge">⚡</div>
+      <div>
+        <h1>Brahma Echo</h1>
+        <span>Cloud Brain & Voice Engine</span>
+      </div>
+    </div>
+    <div class="device-status" id="deviceStatus">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Checking Laptop...</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="orb-container">
+      <div class="orb-ring ring-1"></div>
+      <div class="orb-ring ring-2"></div>
+      <button class="mic-button" id="micBtn" title="Click to speak to Brahma">
+        <svg class="mic-icon" viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+        <span class="mic-label" id="micLabel">Speak</span>
+      </button>
+    </div>
+
+    <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with Brahma</div>
+
+    <div class="chat-box" id="chatBox">
+      <div class="msg sys">⚡ Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
+    </div>
+
+    <div class="input-bar">
+      <input type="text" id="cmdInput" placeholder="Type a task (e.g. 'Open Chrome on my laptop', 'What is on my screen?')" />
+      <button id="sendBtn">Send</button>
+    </div>
+  </main>
+
+  <footer>
+    <span>Host: Render Cloud Service</span>
+    <span>Connected to Gemini 2.5 Flash Native Audio</span>
+  </footer>
+
+  <script>
+    const micBtn = document.getElementById('micBtn');
+    const micLabel = document.getElementById('micLabel');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const statusSubtitle = document.getElementById('statusSubtitle');
+    const chatBox = document.getElementById('chatBox');
+    const cmdInput = document.getElementById('cmdInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    let isRecording = false;
+    let recognition = null;
+
+    // 1. Poll Device & Server Status
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data.laptop_connected) {
+          statusDot.className = 'dot online';
+          const name = data.laptop_info?.device_name || 'Windows Laptop';
+          statusText.textContent = 'Laptop: ' + name + ' (Online)';
+        } else {
+          statusDot.className = 'dot';
+          statusText.textContent = 'Laptop: Offline (Start laptop_worker.py)';
+        }
+      } catch (err) {
+        statusDot.className = 'dot';
+        statusText.textContent = 'Cloud Status: Reconnecting...';
+      }
+    }
+    setInterval(checkStatus, 3000);
+    checkStatus();
+
+    // 2. Setup Speech Recognition (Browser Web Speech API)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isRecording = true;
+        micBtn.classList.add('active');
+        micLabel.textContent = 'Listening...';
+        statusSubtitle.textContent = 'Listening to your voice...';
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        statusSubtitle.textContent = '"' + transcript + '"';
+        if (event.results[0].isFinal) {
+          sendText(transcript);
+        }
+      };
+
+      recognition.onerror = (e) => {
+        console.warn('Speech error:', e);
+        stopListening();
+      };
+
+      recognition.onend = () => {
+        stopListening();
+      };
+    }
+
+    function toggleListening() {
+      if (!recognition) {
+        alert('Web Speech is not supported on this browser. You can type commands in the text box below, or run laptop_worker.py on your laptop for continuous native audio.');
+        return;
+      }
+      if (isRecording) {
+        recognition.stop();
+      } else {
+        recognition.start();
+      }
+    }
+
+    function stopListening() {
+      isRecording = false;
+      micBtn.classList.remove('active');
+      micLabel.textContent = 'Speak';
+      statusSubtitle.textContent = 'Click the orb or type below to speak';
+    }
+
+    micBtn.addEventListener('click', toggleListening);
+
+    // 3. Send Commands to Cloud Brain
+    async function sendText(text) {
+      text = text.trim();
+      if (!text) return;
+
+      appendMsg('user', text);
+      cmdInput.value = '';
+      statusSubtitle.textContent = 'Brahma is thinking...';
+
+      try {
+        const res = await fetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text })
+        });
+        const data = await res.json();
+        statusSubtitle.textContent = 'Command dispatched to Cloud Brain.';
+      } catch (err) {
+        appendMsg('sys', 'Failed to send command: ' + err.message);
+        statusSubtitle.textContent = 'Error delivering command.';
+      }
+    }
+
+    sendBtn.addEventListener('click', () => sendText(cmdInput.value));
+    cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendText(cmdInput.value);
+    });
+
+    function appendMsg(type, content) {
+      const el = document.createElement('div');
+      el.className = 'msg ' + type;
+      el.textContent = (type === 'user' ? 'You: ' : type === 'ai' ? 'Brahma: ' : '') + content;
+      chatBox.appendChild(el);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
+</body>
+</html>

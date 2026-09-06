@@ -23,7 +23,7 @@ from typing import Any, Dict, Optional
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.distributed.protocol import (
@@ -168,6 +168,15 @@ async def on_startup():
     )
     # Start Gemini Live background loop
     asyncio.create_task(brain.run())
+
+
+@app.get("/", response_class=HTMLResponse)
+async def get_web_ui():
+    """Serves the browser-based Web Voice & Task interface."""
+    ui_path = BASE_DIR / "cloud" / "web_ui.html"
+    if ui_path.exists():
+        return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Brahma Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
 
 
 @app.get("/api/status")
