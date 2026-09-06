@@ -1,0 +1,8 @@
+{
+  "cloud_server_url": "wss://YOUR-APP-NAME.onrender.com/ws/node",
+  "auth_token": "PASTE_YOUR_RENDER_TOKEN_HERE",
+  "device_name": "My-Windows-Laptop",
+  "enable_audio": true,
+  "enable_ui": true,
+  "reconnect_interval": 3
+}

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: brahma-cloud-brain
+    runtime: python
+    buildCommand: pip install -r requirements-cloud.txt
+    startCommand: python cloud_server.py
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BRAHMA_CLOUD_TOKEN
+        generateValue: true
