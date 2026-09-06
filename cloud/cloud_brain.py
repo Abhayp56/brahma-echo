@@ -230,6 +230,24 @@ class CloudBrain:
             self.log(f"ERR: {err_msg}")
             return types.FunctionResponse(id=call_id, name=name, response={"error": err_msg})
 
+        # Announce immediate task progress to user so they know Brahma is working on it
+        clean_name = name.replace("_", " ")
+        if name == "open_app":
+            target = args.get("app_name") or "the application"
+            progress_msg = f"Opening {target} on your laptop..."
+        elif name == "computer_control":
+            action = args.get("action", "action")
+            progress_msg = f"Executing {action} on your computer..."
+        elif name == "browser_control":
+            progress_msg = "Controlling the browser on your laptop..."
+        elif name == "screen_process":
+            progress_msg = "Inspecting your laptop screen..."
+        else:
+            progress_msg = f"Working on {clean_name} on your laptop..."
+
+        if self.on_transcript:
+            self.on_transcript("assistant", progress_msg)
+
         try:
             self.log(f"🚀 Dispatching '{name}' to connected laptop worker...")
             exec_result = await self.dispatcher.execute_on_laptop(name, args)

@@ -167,7 +167,7 @@ class LaptopWorker:
 
     def queue_mic_audio(self, raw_pcm: bytes):
         """Callback to send captured microphone audio chunk over WebSocket."""
-        if not getattr(self, "is_authenticated", False) or not self.ws or getattr(self.ws, "closed", True):
+        if not getattr(self, "is_authenticated", False) or not self.ws:
             return
         try:
             b64_data = base64.b64encode(raw_pcm).decode("ascii")
@@ -191,9 +191,12 @@ class LaptopWorker:
             payload=res,
             request_id=req_id,
         )
-        if self.ws and not self.ws.closed:
-            await self.ws.send(reply.to_json())
-            logger.info(f"Sent result for '{tool_name}' back to Cloud.")
+        if self.ws:
+            try:
+                await self.ws.send(reply.to_json())
+                logger.info(f"Sent result for '{tool_name}' back to Cloud.")
+            except Exception as exc:
+                logger.error(f"Failed to send result for '{tool_name}': {exc}")
 
     async def _connect_and_listen(self):
         self.is_authenticated = False
