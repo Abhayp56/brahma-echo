@@ -150,12 +150,17 @@ server_config = load_server_config()
 web_clients: set[WebSocket] = set()
 
 
-def broadcast_audio_to_laptop(pcm_chunk: bytes):
-    """Sends synthesized audio from Gemini Live to the connected laptop."""
-    if dispatcher.is_connected and dispatcher.laptop_ws:
-        b64_data = base64.b64encode(pcm_chunk).decode("ascii")
-        msg = build_message(ProtocolTypes.AUDIO_CHUNK, payload={"data": b64_data})
-        asyncio.create_task(dispatcher.laptop_ws.send_text(msg.to_json()))
+def broadcast_audio_to_web(pcm_chunk: bytes):
+    """Sends synthesized 24kHz audio from Gemini Live directly to connected browser clients."""
+    if not web_clients:
+        return
+    b64_data = base64.b64encode(pcm_chunk).decode("ascii")
+    payload = json.dumps({"type": "audio_chunk", "data": b64_data})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(payload))
+        except Exception:
+            pass
 
 
 def broadcast_transcript_to_web(role: str, text: str):
@@ -174,7 +179,7 @@ async def on_startup():
     logger.info("Initializing Brahma Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
-        on_audio_out=broadcast_audio_to_laptop,
+        on_audio_out=broadcast_audio_to_web,
         on_transcript=broadcast_transcript_to_web,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
     )

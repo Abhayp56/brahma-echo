@@ -232,11 +232,8 @@ class LaptopWorker:
                         asyncio.create_task(self._handle_execute_tool(msg.request_id, msg.payload))
 
                     elif msg.type == ProtocolTypes.AUDIO_CHUNK:
-                        # Received speech audio from Cloud Brain
-                        b64_data = msg.payload.get("data", "")
-                        if b64_data and self.audio_worker:
-                            pcm_bytes = base64.b64decode(b64_data)
-                            await self.audio_worker.audio_out_queue.put(pcm_bytes)
+                        # Voice playback is handled entirely on the web interface; laptop stays silent
+                        pass
 
                     elif msg.type == ProtocolTypes.PING:
                         pong = build_message(ProtocolTypes.PONG, request_id=msg.request_id)
@@ -249,11 +246,15 @@ class LaptopWorker:
         self.loop = asyncio.get_event_loop()
         self.is_running = True
 
-        # Initialize audio subsystem if enabled
-        if self.config.get("enable_audio", True):
+        # Audio playback is strictly off on laptop worker (audio handled on web interface)
+        if self.config.get("enable_speaker", False):
             self.audio_worker = AudioWorker(self.queue_mic_audio)
             self.audio_worker.is_running = True
             self.audio_worker.start_playback_loop(self.loop)
+        if self.config.get("enable_mic", False):
+            if not self.audio_worker:
+                self.audio_worker = AudioWorker(self.queue_mic_audio)
+                self.audio_worker.is_running = True
             self.audio_worker.start_mic_loop(self.loop)
 
         # Connection and auto-reconnect loop
