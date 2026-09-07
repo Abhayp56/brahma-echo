@@ -227,15 +227,17 @@ TOOL_DECLARATIONS = [
         "name": "whatsapp_control",
         "description": (
             "Direct server-side WhatsApp controller. "
-            "Send text messages, photos, PDFs, Word/Excel documents to any contact or phone number directly through WhatsApp. "
-            "Also checks WhatsApp connection status or saves contact phone numbers."
+            "Send text messages, photos, PDFs, Word/Excel documents to any contact. "
+            "Read recent incoming and outgoing messages to brief Abhay on his chats. "
+            "Manage the VIP auto-reply whitelist (add_vip, remove_vip, list_vip), "
+            "check WhatsApp status, or switch modes (notify_only, whitelist, auto_pilot)."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "send_text | send_image | send_document | check_status | save_contact"
+                    "description": "send_text | send_image | send_document | check_status | save_contact | read_messages | add_vip | remove_vip | list_vip | set_mode"
                 },
                 "recipient": {
                     "type": "STRING",
@@ -251,7 +253,15 @@ TOOL_DECLARATIONS = [
                 },
                 "phone": {
                     "type": "STRING",
-                    "description": "Phone number when action is save_contact or when updating contact information"
+                    "description": "Phone number when action is save_contact, add_vip, or remove_vip"
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Maximum number of recent messages to return when action is read_messages (default: 10)"
+                },
+                "mode": {
+                    "type": "STRING",
+                    "description": "notify_only | whitelist | auto_pilot (when action is set_mode)"
                 }
             },
             "required": ["action"]

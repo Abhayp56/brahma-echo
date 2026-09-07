@@ -835,6 +835,24 @@
           </div>
         </div>
 
+        <!-- VIP Whitelist Manager -->
+        <div id="waVipSection" style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,179,0,0.25); border-radius: 12px; padding: 16px;">
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--accent);">⭐ VIP Auto-Reply Whitelist</span>
+            <span id="waVipCountBadge" style="font-size: 11px; background: rgba(255,179,0,0.15); color: var(--accent); padding: 2px 8px; border-radius: 10px;">0 VIPs</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+            In <strong>VIP Whitelist Mode</strong>, ARYA only auto-replies to contacts in this list. In <strong>Auto-Pilot Mode</strong>, she replies to all direct messages (group messages are always safely excluded).
+          </p>
+          <div id="waVipChipsContainer" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; min-height: 28px;">
+            <div style="font-size: 12px; color: var(--text-muted);">No VIP numbers added yet.</div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <input type="text" id="waAddVipInput" placeholder="Add phone with country code (e.g. 919876543210 or contact name)" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
+            <button id="waAddVipBtn" style="background: rgba(255,179,0,0.2); border: 1px solid var(--primary); color: var(--accent); padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; white-space: nowrap;">+ Add to VIP</button>
+          </div>
+        </div>
+
         <!-- Quick Send Box -->
         <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
           <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📤 Send a WhatsApp Message via ARYA</div>
@@ -1360,6 +1378,10 @@
     const waGetPairCodeBtn = document.getElementById('waGetPairCodeBtn');
     const waPairCodeResultBox = document.getElementById('waPairCodeResultBox');
     const waPairCodeDisplay = document.getElementById('waPairCodeDisplay');
+    const waVipChipsContainer = document.getElementById('waVipChipsContainer');
+    const waVipCountBadge = document.getElementById('waVipCountBadge');
+    const waAddVipInput = document.getElementById('waAddVipInput');
+    const waAddVipBtn = document.getElementById('waAddVipBtn');
 
     window.openWhatsAppModal = function() {
       const modal = document.getElementById('whatsappModal');
@@ -1518,6 +1540,10 @@
           }
         });
       }
+
+      if (Array.isArray(data.whitelist)) {
+        renderWhatsAppWhitelist(data.whitelist);
+      }
     }
 
     function renderWhatsAppQR(dataUrl) {
@@ -1549,19 +1575,98 @@
 
       const item = document.createElement('div');
       const isOut = c.direction === 'outbound';
+      const isGrp = !!c.is_group;
       item.style.padding = '8px 10px';
       item.style.borderRadius = '6px';
       item.style.background = isOut ? 'rgba(37, 211, 102, 0.08)' : 'rgba(255, 255, 255, 0.04)';
-      item.style.borderLeft = isOut ? '3px solid #25d366' : '3px solid var(--primary)';
+      item.style.borderLeft = isOut ? '3px solid #25d366' : isGrp ? '3px solid #00e5ff' : '3px solid var(--primary)';
       item.innerHTML = `
         <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-          <strong style="color: ${isOut ? '#25d366' : '#fff'};">${c.sender || c.phone}</strong>
+          <div>
+            <strong style="color: ${isOut ? '#25d366' : '#fff'};">${c.sender || c.phone}</strong>
+            ${isGrp ? '<span style="font-size: 10px; background: rgba(0,229,255,0.15); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); padding: 1px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;">GROUP</span>' : ''}
+          </div>
           <span style="color: var(--text-muted); font-size: 11px;">${c.time || ''}</span>
         </div>
         <div style="color: #e0e0e0;">${c.text}</div>
       `;
       waChatList.appendChild(item);
       waChatList.scrollTop = waChatList.scrollHeight;
+    }
+
+    function renderWhatsAppWhitelist(whitelist) {
+      if (!waVipChipsContainer) return;
+      waVipChipsContainer.innerHTML = '';
+      if (!whitelist || whitelist.length === 0) {
+        waVipChipsContainer.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">No VIP numbers added yet.</div>';
+        if (waVipCountBadge) waVipCountBadge.textContent = '0 VIPs';
+        return;
+      }
+      if (waVipCountBadge) waVipCountBadge.textContent = `${whitelist.length} VIP${whitelist.length > 1 ? 's' : ''}`;
+      whitelist.forEach(phone => {
+        const chip = document.createElement('div');
+        chip.style.display = 'inline-flex';
+        chip.style.alignItems = 'center';
+        chip.style.gap = '8px';
+        chip.style.background = 'rgba(255, 179, 0, 0.12)';
+        chip.style.border = '1px solid rgba(255, 179, 0, 0.35)';
+        chip.style.color = '#ffe066';
+        chip.style.padding = '4px 10px';
+        chip.style.borderRadius = '16px';
+        chip.style.fontSize = '12px';
+        chip.style.fontWeight = '500';
+        chip.innerHTML = `
+          <span>+${phone}</span>
+          <span style="cursor: pointer; font-weight: 700; color: #ff5252; font-size: 14px; line-height: 1;" title="Remove from VIP">&times;</span>
+        `;
+        chip.querySelector('span:last-child').addEventListener('click', async () => {
+          await removeWhatsAppVip(phone);
+        });
+        waVipChipsContainer.appendChild(chip);
+      });
+    }
+
+    async function removeWhatsAppVip(phone) {
+      try {
+        const res = await fetch('/api/whatsapp/whitelist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, action: 'remove' })
+        });
+        const data = await res.json();
+        if (data.whitelist) renderWhatsAppWhitelist(data.whitelist);
+      } catch (err) {
+        alert('Failed to remove VIP: ' + err.message);
+      }
+    }
+
+    if (waAddVipBtn) {
+      waAddVipBtn.addEventListener('click', async () => {
+        const target = (waAddVipInput.value || '').trim();
+        if (!target) {
+          alert('Please enter a phone number or saved contact name.');
+          return;
+        }
+        waAddVipBtn.textContent = 'Adding...';
+        try {
+          const res = await fetch('/api/whatsapp/whitelist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: target, action: 'add' })
+          });
+          const data = await res.json();
+          if (data.success && data.whitelist) {
+            waAddVipInput.value = '';
+            renderWhatsAppWhitelist(data.whitelist);
+          } else {
+            alert('Could not add VIP: ' + (data.error || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error adding VIP: ' + err.message);
+        } finally {
+          waAddVipBtn.textContent = '+ Add to VIP';
+        }
+      });
     }
 
     // Mode Selector Buttons

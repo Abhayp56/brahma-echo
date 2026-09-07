@@ -229,6 +229,16 @@ class WhatsAppGateway:
                 )
                 push_name = getattr(info, "Pushname", "") or sender_phone or "Friend"
 
+                # Detect if this message came from a WhatsApp group
+                chat_server = getattr(chat_jid, "Server", "") if chat_jid else ""
+                sender_server = getattr(sender_jid, "Server", "") if sender_jid else ""
+                is_group = bool(
+                    getattr(src, "IsGroup", False)
+                    or chat_server == "g.us"
+                    or sender_server == "g.us"
+                    or "@g.us" in str(getattr(chat_jid, "String", ""))
+                )
+
                 # Extract text content
                 msg_obj = getattr(message, "Message", None)
                 text = ""
@@ -241,7 +251,10 @@ class WhatsAppGateway:
                 if not text:
                     return
 
-                logger.info(f"📩 Incoming WhatsApp from {push_name} ({sender_phone}): '{text}'")
+                logger.info(
+                    f"📩 Incoming WhatsApp {'[GROUP] ' if is_group else ''}from "
+                    f"{push_name} ({sender_phone}): '{text}'"
+                )
 
                 record = {
                     "id": getattr(info, "ID", str(time.time())),
@@ -251,11 +264,12 @@ class WhatsAppGateway:
                     "time": time.strftime("%H:%M"),
                     "direction": "inbound",
                     "is_ai_reply": False,
+                    "is_group": is_group,
                 }
 
                 with self._lock:
                     self.recent_chats.append(record)
-                    if len(self.recent_chats) > 30:
+                    if len(self.recent_chats) > 50:
                         self.recent_chats.pop(0)
 
                 # Broadcast to Web UI so user sees incoming text live
@@ -263,10 +277,16 @@ class WhatsAppGateway:
 
                 # Auto-reply decision
                 should_reply = False
-                if self.mode == "auto_pilot":
+                if is_group:
+                    # STRICT RULE: ARYA remembers group chats for Abhay, but NEVER sends auto-replies into groups!
+                    should_reply = False
+                    logger.info(f"👥 Group message logged from {push_name}. Group auto-reply suppressed.")
+                elif self.mode == "auto_pilot":
                     should_reply = True
-                elif self.mode == "whitelist" and sender_phone in self.whitelist:
-                    should_reply = True
+                elif self.mode == "whitelist":
+                    clean_sender = clean_phone_number(sender_phone)
+                    if sender_phone in self.whitelist or clean_sender in self.whitelist:
+                        should_reply = True
 
                 if should_reply:
                     threading.Thread(
@@ -470,6 +490,7 @@ class WhatsAppGateway:
             "linked_name": self.linked_name,
             "mode": self.mode,
             "whitelist_count": len(self.whitelist),
+            "whitelist": sorted(list(self.whitelist)),
             "recent_chat_count": len(self.recent_chats),
             "has_qr": self.qr_data_url is not None,
         }
@@ -483,11 +504,20 @@ class WhatsAppGateway:
             return {"success": True, "mode": self.mode}
         return {"success": False, "error": f"Invalid mode: {mode}"}
 
-    def update_whitelist(self, phone: str, action: str = "add") -> Dict[str, Any]:
-        """Add or remove phone number from auto-reply whitelist."""
-        clean = clean_phone_number(phone)
+    def update_whitelist(self, recipient_or_phone: str, action: str = "add") -> Dict[str, Any]:
+        """Add or remove phone number or contact from auto-reply whitelist."""
+        clean = clean_phone_number(recipient_or_phone)
+        if not clean or len(clean) < 7:
+            from cloud.whatsapp_conversations import resolve_phone_number
+            resolved = resolve_phone_number(recipient_or_phone)
+            if resolved:
+                clean = resolved
+
         if not clean:
-            return {"success": False, "error": "Invalid phone number."}
+            return {
+                "success": False,
+                "error": f"Could not resolve phone number for '{recipient_or_phone}'. Please provide a valid number with country code.",
+            }
 
         if action == "add":
             self.whitelist.add(clean)
@@ -495,7 +525,8 @@ class WhatsAppGateway:
             self.whitelist.discard(clean)
 
         self._save_config()
-        return {"success": True, "whitelist": list(self.whitelist)}
+        self._broadcast("whatsapp_status", self.get_status())
+        return {"success": True, "action": action, "phone": clean, "whitelist": sorted(list(self.whitelist))}
 
     def disconnect(self):
         """Disconnect or logout current session."""

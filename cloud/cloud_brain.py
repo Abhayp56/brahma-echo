@@ -285,6 +285,68 @@ class CloudBrain:
                 status = gateway.get_status()
                 return types.FunctionResponse(id=call_id, name=name, response=status)
 
+            elif action == "read_messages":
+                limit = int(args.get("limit") or 10)
+                filter_target = (recipient or phone or "").strip().lower()
+                chats = gateway.recent_chats[:]
+                if filter_target:
+                    chats = [
+                        c for c in chats
+                        if filter_target in str(c.get("sender", "")).lower()
+                        or filter_target in str(c.get("phone", "")).lower()
+                    ]
+
+                recent = chats[-limit:]
+                if not recent:
+                    msg = f"No recent WhatsApp messages recorded{' for ' + recipient if recipient else ''}."
+                    return types.FunctionResponse(
+                        id=call_id, name=name, response={"result": msg, "count": 0, "messages": []}
+                    )
+
+                formatted_msgs = []
+                for c in recent:
+                    direction = "Outgoing" if c.get("direction") == "outbound" else "Incoming"
+                    group_flag = " [GROUP]" if c.get("is_group") else ""
+                    formatted_msgs.append({
+                        "sender": c.get("sender"),
+                        "phone": c.get("phone"),
+                        "time": c.get("time"),
+                        "text": c.get("text"),
+                        "type": direction + group_flag,
+                    })
+
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={
+                        "total_count": len(formatted_msgs),
+                        "summary": f"Retrieved {len(formatted_msgs)} recent WhatsApp messages.",
+                        "messages": formatted_msgs,
+                    }
+                )
+
+            elif action == "add_vip":
+                target = phone or recipient
+                res = gateway.update_whitelist(target, action="add")
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
+            elif action == "remove_vip":
+                target = phone or recipient
+                res = gateway.update_whitelist(target, action="remove")
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
+            elif action == "list_vip":
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={"whitelist": sorted(list(gateway.whitelist)), "count": len(gateway.whitelist)}
+                )
+
+            elif action == "set_mode":
+                new_mode = args.get("mode") or message or "notify_only"
+                res = gateway.set_mode(new_mode)
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
             elif action == "save_contact":
                 from cloud.whatsapp_conversations import save_contact_number
                 save_contact_number(recipient, phone or message)
