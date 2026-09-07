@@ -270,6 +270,43 @@ class CloudBrain:
                 response={"results": results},
             )
 
+        # 1.5 Server-side WhatsApp controller
+        if name == "whatsapp_control" or (name == "send_message" and "whatsapp" in str(args.get("platform", "")).lower()):
+            action = args.get("action", "send_text")
+            recipient = args.get("recipient") or args.get("receiver", "")
+            message = args.get("message") or args.get("message_text", "")
+            file_path = args.get("file_path") or args.get("media_path", "")
+            phone = args.get("phone", "")
+
+            from cloud.whatsapp_gateway import WhatsAppGateway
+            gateway = WhatsAppGateway.get_instance()
+
+            if action == "check_status":
+                status = gateway.get_status()
+                return types.FunctionResponse(id=call_id, name=name, response=status)
+
+            elif action == "save_contact":
+                from cloud.whatsapp_conversations import save_contact_number
+                save_contact_number(recipient, phone or message)
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={"result": f"Saved WhatsApp contact '{recipient}' ({phone or message})."}
+                )
+
+            elif action in {"send_image", "send_document"}:
+                res = gateway.send_media(
+                    recipient=recipient,
+                    file_path_or_url=file_path,
+                    caption=message,
+                    media_type="image" if action == "send_image" else "document"
+                )
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
+            else:  # send_text or default
+                res = gateway.send_text(recipient, message)
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."

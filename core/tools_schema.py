@@ -224,6 +224,40 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "whatsapp_control",
+        "description": (
+            "Direct server-side WhatsApp controller. "
+            "Send text messages, photos, PDFs, Word/Excel documents to any contact or phone number directly through WhatsApp. "
+            "Also checks WhatsApp connection status or saves contact phone numbers."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "send_text | send_image | send_document | check_status | save_contact"
+                },
+                "recipient": {
+                    "type": "STRING",
+                    "description": "Contact name (e.g. 'Rahul', 'Mom', 'Boss') or phone number with country code (e.g. '+919876543210')"
+                },
+                "message": {
+                    "type": "STRING",
+                    "description": "Message text or media caption to send"
+                },
+                "file_path": {
+                    "type": "STRING",
+                    "description": "Path to local file or document to send as an attachment"
+                },
+                "phone": {
+                    "type": "STRING",
+                    "description": "Phone number when action is save_contact or when updating contact information"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
         "name": "reminder",
         "description": "Sets a timed reminder using Windows Task Scheduler.",
         "parameters": {

@@ -189,6 +189,16 @@ def broadcast_turn_complete_to_web():
             pass
 
 
+def broadcast_whatsapp_event(event_type: str, payload: Any):
+    """Broadcasts real-time WhatsApp events (status, qr, messages) to browser clients."""
+    msg = json.dumps({"type": event_type, "data": payload})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(msg))
+        except Exception:
+            pass
+
+
 @app.on_event("startup")
 async def on_startup():
     global brain
@@ -202,6 +212,15 @@ async def on_startup():
     )
     # Start Gemini Live background loop
     asyncio.create_task(brain.run())
+
+    # Start WhatsApp Gateway
+    try:
+        from cloud.whatsapp_gateway import WhatsAppGateway
+        whatsapp_gw = WhatsAppGateway.get_instance()
+        whatsapp_gw.add_listener(broadcast_whatsapp_event)
+        whatsapp_gw.start()
+    except Exception as wa_err:
+        logger.warning(f"Could not start WhatsApp Gateway: {wa_err}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -265,6 +284,75 @@ async def delete_user_memory(category: str, key: str):
         raise HTTPException(status_code=400, detail="Missing category or key.")
     res = forget(key, category)
     return {"status": "success", "result": res}
+
+
+# =========================================================================
+# WhatsApp Multi-Device Gateway REST Endpoints
+# =========================================================================
+
+@app.get("/api/whatsapp/status")
+async def get_whatsapp_status():
+    """Returns the current connection status of the WhatsApp companion node."""
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    return WhatsAppGateway.get_instance().get_status()
+
+
+@app.get("/api/whatsapp/qr")
+async def get_whatsapp_qr():
+    """Returns the latest WhatsApp Web pairing QR code."""
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    gw = WhatsAppGateway.get_instance()
+    return {"qr_data_url": gw.qr_data_url, "status": gw.status}
+
+
+@app.post("/api/whatsapp/send")
+async def send_whatsapp_message(data: Dict[str, Any]):
+    """Sends a text message, image, or document through WhatsApp."""
+    recipient = data.get("recipient", "").strip()
+    message = data.get("message", "").strip()
+    file_path = data.get("file_path", "").strip()
+    media_type = data.get("media_type", "document")
+    if not recipient or (not message and not file_path):
+        raise HTTPException(status_code=400, detail="Missing recipient or message/file.")
+
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    gw = WhatsAppGateway.get_instance()
+    if file_path:
+        res = gw.send_media(recipient, file_path, caption=message, media_type=media_type)
+    else:
+        res = gw.send_text(recipient, message)
+    return res
+
+
+@app.post("/api/whatsapp/mode")
+async def set_whatsapp_mode(data: Dict[str, Any]):
+    """Sets conversational mode ('notify_only', 'whitelist', 'auto_pilot')."""
+    mode = data.get("mode", "notify_only")
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    return WhatsAppGateway.get_instance().set_mode(mode)
+
+
+@app.get("/api/whatsapp/chats")
+async def get_whatsapp_chats():
+    """Returns recent incoming and outgoing WhatsApp messages."""
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    return {"chats": WhatsAppGateway.get_instance().recent_chats}
+
+
+@app.post("/api/whatsapp/whitelist")
+async def update_whatsapp_whitelist(data: Dict[str, Any]):
+    """Add or remove a contact phone number from the VIP auto-reply whitelist."""
+    phone = data.get("phone", "").strip()
+    action = data.get("action", "add")
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    return WhatsAppGateway.get_instance().update_whitelist(phone, action)
+
+
+@app.post("/api/whatsapp/disconnect")
+async def disconnect_whatsapp():
+    """Disconnects or resets the WhatsApp companion session."""
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    return WhatsAppGateway.get_instance().disconnect()
 
 
 @app.websocket("/ws/web")

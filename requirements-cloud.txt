@@ -8,3 +8,6 @@ requests>=2.31.0
 cryptography>=42.0.0
 beautifulsoup4>=4.12.0
 duckduckgo-search>=5.0.0
+neonize>=0.4.3
+qrcode>=7.4.2
+pillow>=10.0.0

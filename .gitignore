@@ -18,9 +18,13 @@ config/api_keys.json
 config/cloud_config.json
 config/app_settings.json
 config/discord_bot.json
+config/whatsapp_config.json
 config/workspace_store.sqlite3*
 config/smart_home.*
+config/whatsapp_session.*
 config/ppt_template_cache/
+scratch/
+desktop/
 config/.bootstrap_done
 config/.desktop_shortcut_created
 config/certs/
