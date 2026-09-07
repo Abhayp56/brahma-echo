@@ -216,8 +216,17 @@ class WhatsAppGateway:
                     # Do not process our own outgoing messages
                     return
 
+                chat_jid = getattr(src, "Chat", None) if src else None
                 sender_jid = getattr(src, "Sender", None) if src else None
-                sender_phone = getattr(sender_jid, "User", "") if sender_jid else ""
+                sender_alt = getattr(src, "SenderAlt", None) if src else None
+
+                # For 1-on-1 chats, reply directly to Chat JID or Sender JID
+                reply_jid = chat_jid or sender_jid
+                sender_phone = (
+                    getattr(sender_alt, "User", None)
+                    or getattr(sender_jid, "User", None)
+                    or getattr(chat_jid, "User", "")
+                )
                 push_name = getattr(info, "Pushname", "") or sender_phone or "Friend"
 
                 # Extract text content
@@ -262,7 +271,7 @@ class WhatsAppGateway:
                 if should_reply:
                     threading.Thread(
                         target=self._auto_reply_worker,
-                        args=(sender_phone, push_name, text),
+                        args=(sender_phone, push_name, text, reply_jid),
                         daemon=True,
                     ).start()
 
@@ -287,34 +296,47 @@ class WhatsAppGateway:
         self._thread = threading.Thread(target=_runner, name="WhatsAppRunner", daemon=True)
         self._thread.start()
 
-    def _auto_reply_worker(self, sender_phone: str, sender_name: str, incoming_text: str):
+    def _auto_reply_worker(
+        self,
+        sender_phone: str,
+        sender_name: str,
+        incoming_text: str,
+        reply_jid: Optional[Any] = None,
+    ):
         """Generates AI response and sends it back to contact with natural delay."""
         try:
-            time.sleep(1.8)  # Natural human delay
+            time.sleep(1.5)  # Natural human delay
             reply = generate_ai_reply(sender_name, sender_phone, incoming_text)
-            if reply:
-                logger.info(f"🤖 ARYA sending autonomous WhatsApp reply to {sender_name}: '{reply}'")
-                res = self.send_text(sender_phone, reply)
-                if res.get("success"):
-                    record = {
-                        "id": str(time.time()),
-                        "sender": "ARYA (AI Auto-Reply)",
-                        "phone": sender_phone,
-                        "text": reply,
-                        "time": time.strftime("%H:%M"),
-                        "direction": "outbound",
-                        "is_ai_reply": True,
-                    }
-                    with self._lock:
-                        self.recent_chats.append(record)
-                    self._broadcast("whatsapp_message", record)
+            if not reply:
+                reply = "Hey! This is ARYA, Abhay's AI assistant. He is currently occupied, but I've noted your message for him!"
+
+            logger.info(f"🤖 ARYA sending autonomous WhatsApp reply to {sender_name}: '{reply}'")
+            res = self.send_text(sender_phone, reply, target_jid=reply_jid)
+            if res.get("success"):
+                record = {
+                    "id": str(time.time()),
+                    "sender": "ARYA (AI Auto-Reply)",
+                    "phone": sender_phone,
+                    "text": reply,
+                    "time": time.strftime("%H:%M"),
+                    "direction": "outbound",
+                    "is_ai_reply": True,
+                }
+                with self._lock:
+                    self.recent_chats.append(record)
+                self._broadcast("whatsapp_message", record)
         except Exception as e:
             logger.error(f"Error in _auto_reply_worker: {e}")
 
-    def send_text(self, recipient: str, message: str) -> Dict[str, Any]:
+    def send_text(
+        self,
+        recipient: str,
+        message: str,
+        target_jid: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """
         Send a text message via WhatsApp.
-        recipient can be a name (e.g. 'Rahul') or phone number (e.g. '+919876543210').
+        If target_jid is provided, sends directly to that JID (supporting LID & private chat threads).
         """
         if self.status != "connected" or not self.client:
             return {
@@ -322,17 +344,22 @@ class WhatsAppGateway:
                 "error": "WhatsApp is not connected. Please scan the QR code in the ARYA Web UI first.",
             }
 
-        phone = resolve_phone_number(recipient)
-        if not phone:
-            return {
-                "success": False,
-                "needs_phone": True,
-                "error": f"Could not find phone number for '{recipient}'. Please provide their WhatsApp phone number.",
-            }
-
         try:
             from neonize.utils import build_jid
-            jid = build_jid(phone)
+
+            if target_jid is not None:
+                jid = target_jid
+                phone = getattr(target_jid, "User", recipient)
+            else:
+                phone = resolve_phone_number(recipient)
+                if not phone:
+                    return {
+                        "success": False,
+                        "needs_phone": True,
+                        "error": f"Could not find phone number for '{recipient}'. Please provide their WhatsApp phone number.",
+                    }
+                jid = build_jid(phone, server="s.whatsapp.net")
+
             self.client.send_message(jid, message)
             logger.info(f"✅ Sent WhatsApp message to {phone}: '{message[:40]}'")
 

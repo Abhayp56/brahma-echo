@@ -141,7 +141,12 @@ RULES:
 4. Output ONLY the reply message text (no quotes, no intro, no emojis spam).
 """
 
-        fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        fallback_models = [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-flash-latest",
+            "gemini-3.5-flash",
+        ]
         for model in fallback_models:
             try:
                 resp = client.models.generate_content(
@@ -158,4 +163,5 @@ RULES:
     except Exception as exc:
         logger.error(f"Error in generate_ai_reply: {exc}")
 
-    return None
+    # Graceful fallback so incoming contacts always receive a prompt response
+    return f"Hey! This is ARYA, {owner_name}'s personal AI assistant. He is currently occupied, but I've noted your message for him!"
