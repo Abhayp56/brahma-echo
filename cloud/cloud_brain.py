@@ -149,10 +149,15 @@ class CloudBrain:
             parts.append(mem_str)
         parts.append(sys_prompt)
         parts.append(
-            "You are running as a Cloud Brain connected to the user's personal laptop. "
+            "You are running as a Cloud Brain connected to the user's personal laptop.\n"
             "When the user asks you to open an application, check their screen, manipulate files, "
             "control the browser, or change computer settings, call the appropriate tool. "
-            "The system will automatically forward the execution to their connected laptop."
+            "The system will automatically forward the execution to their connected laptop.\n"
+            "TOOL USAGE RULES:\n"
+            "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
+            "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
+            "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
+            "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
         )
 
         return types.LiveConnectConfig(

@@ -139,13 +139,32 @@ Return ONLY a valid JSON object in this exact schema (no markdown, no backticks)
 If it cannot be fixed automatically or requires manual user login/credentials, set "can_fix": false and "fix_commands": [].
 """
 
-        response = client.models.generate_content(
-            model=MODEL_DIAGNOSTIC,
-            contents=prompt,
-        )
+        fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        response = None
+
+        for model_name in fallback_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=genai.types.GenerateContentConfig(
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                    ),
+                )
+                if response and response.text:
+                    break
+            except Exception as e:
+                logger.warning(f"Diagnostic model {model_name} failed: {e}. Trying next model...")
+
+        if not response or not response.text:
+            return None
 
         raw = response.text.strip()
-        raw = re.sub(r"^```(?:json)?", "", raw).strip().rstrip("`").strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+
         data = json.loads(raw)
         return data
 

@@ -350,7 +350,7 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "computer_control",
-        "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen.",
+        "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen. Use for direct OS interactions. Do not invoke simultaneously with autonomous_operator.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
@@ -573,10 +573,11 @@ TOOL_DECLARATIONS = [
     {
         "name": "autonomous_operator",
         "description": (
-            "An autonomous multi-step computer vision operator agent. "
-            "Use this when the user gives a complex multi-step desktop or web goal (e.g. 'go to amazon and add X to cart', "
-            "'open spotify and search for Y', 'fill out this form on screen'). "
-            "The agent captures the screen in real-time, plans the next UI step, clicks, types, and verifies results in a continuous loop until complete."
+            "Specialized autonomous computer vision operator agent for complex GUI workflows. "
+            "Use ONLY for multi-step visual workflows where no direct tools exist (e.g. interacting with third-party desktop apps, complex visual forms). "
+            "DO NOT use for simple tasks: use 'open_app' to open applications, 'computer_control' to type/click into open windows, "
+            "'browser_control' or 'web_search' for searching the web, or 'terminal_agent' for terminal commands. "
+            "NEVER call other tools concurrently with autonomous_operator."
         ),
         "parameters": {
             "type": "OBJECT",

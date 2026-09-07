@@ -101,6 +101,10 @@ class WebSocketToolDispatcher(RemoteToolDispatcher):
                 "error": "Laptop task worker is currently offline. Please ensure your laptop app is running.",
             }
 
+        # Allow long-running multi-step tools enough time to complete without premature timeouts
+        if tool_name in {"autonomous_operator", "website_builder", "dev_agent"}:
+            timeout = max(timeout, 180.0)
+
         req_id = new_request_id()
         msg = build_message(
             ProtocolTypes.EXECUTE_TOOL,

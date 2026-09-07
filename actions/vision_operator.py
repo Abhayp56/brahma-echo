@@ -130,14 +130,19 @@ Available Actions:
 - "click": Left click at pixel coordinates (requires "x", "y")
 - "double_click": Double click at pixel coordinates (requires "x", "y")
 - "right_click": Right click at pixel coordinates (requires "x", "y")
-- "type": Type text at current cursor location (requires "text")
+- "type": Type text at current cursor location (requires "text", optional "press_enter": true to submit immediately)
 - "press": Press a keyboard key like "enter", "tab", "esc", "backspace" (requires "key")
-- "hotkey": Key combination like "ctrl+t", "alt+f4", "ctrl+a", "ctrl+c", "ctrl+v" (requires "keys")
+- "hotkey": Key combination like "ctrl+t", "alt+f4", "ctrl+a", "ctrl+c", "ctrl+v", "ctrl+s" (requires "keys")
 - "scroll": Scroll page (requires "direction": "up"|"down", "amount": 3)
 - "wait": Wait 1-2 seconds for page or app to load (requires "seconds": 1.5)
 - "open_app": Launch application via Windows Search (requires "app_name")
 - "finish": Mark the goal as successfully completed (requires "summary")
 - "fail": Mark as impossible or blocked (requires "summary")
+
+Important Rules:
+- If typing a search query or command, set "press_enter": true so it submits in the same step.
+- NEVER repeatedly type the same query into the same box if it is already visible on screen. Instead press "enter" or click submit.
+- Click inside an input field or search bar before typing if it is not already focused.
 
 Return ONLY a valid JSON object matching this exact schema (no markdown, no backticks):
 {{
@@ -146,6 +151,7 @@ Return ONLY a valid JSON object matching this exact schema (no markdown, no back
   "x": 640,
   "y": 360,
   "text": "optional text to type",
+  "press_enter": false,
   "key": "optional key name",
   "keys": "optional hotkey string",
   "direction": "down",
@@ -159,13 +165,35 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
 
         image_part = types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg")
 
-        response = client.models.generate_content(
-            model=MODEL_OPERATOR,
-            contents=[prompt, image_part],
-        )
+        fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        response = None
+        last_err = None
+
+        for model_name in fallback_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt, image_part],
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        response_mime_type="application/json",
+                    ),
+                )
+                if response and response.text:
+                    break
+            except Exception as e:
+                last_err = e
+                logger.warning(f"Vision model {model_name} error: {e}. Falling back to next model...")
+                time.sleep(0.6)
+
+        if not response or not response.text:
+            raise last_err or RuntimeError("All vision models failed.")
 
         raw = response.text.strip()
-        raw = re.sub(r"^```(?:json)?", "", raw).strip().rstrip("`").strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+
         data = json.loads(raw)
         return data
 
@@ -211,6 +239,10 @@ def _execute_gui_action(action_data: Dict[str, Any], coord_scale: float) -> str:
     elif action == "type":
         text = str(action_data.get("text", ""))
         pyautogui.write(text, interval=0.03)
+        if action_data.get("press_enter", False):
+            time.sleep(0.2)
+            pyautogui.press("enter")
+            return f"Typed '{text}' and pressed Enter"
         return f"Typed '{text}'"
 
     elif action == "press":

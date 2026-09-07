@@ -164,6 +164,7 @@ class LaptopWorker:
         self.is_running = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.audio_worker = None
+        self._tool_lock = asyncio.Lock()
 
     def queue_mic_audio(self, raw_pcm: bytes):
         """Callback to send captured microphone audio chunk over WebSocket."""
@@ -183,7 +184,8 @@ class LaptopWorker:
         args = payload.get("args", {})
 
         logger.info(f"Received tool execution command from Cloud: '{tool_name}'")
-        res = await self.dispatcher.execute(tool_name, args)
+        async with self._tool_lock:
+            res = await self.dispatcher.execute(tool_name, args)
 
         # Send back TOOL_RESULT
         reply = build_message(
