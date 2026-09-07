@@ -173,6 +173,16 @@ def broadcast_transcript_to_web(role: str, text: str):
             pass
 
 
+def broadcast_turn_complete_to_web():
+    """Broadcasts turn_complete event to browser clients so they know when AI speech ends."""
+    payload = json.dumps({"type": "turn_complete"})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(payload))
+        except Exception:
+            pass
+
+
 @app.on_event("startup")
 async def on_startup():
     global brain
@@ -181,6 +191,7 @@ async def on_startup():
         tool_dispatcher=dispatcher,
         on_audio_out=broadcast_audio_to_web,
         on_transcript=broadcast_transcript_to_web,
+        on_turn_complete=broadcast_turn_complete_to_web,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
     )
     # Start Gemini Live background loop

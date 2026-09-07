@@ -259,6 +259,79 @@
       text-align: center;
     }
 
+    /* Hands-Free Live Voice Controls */
+    .voice-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: -12px;
+      margin-bottom: 4px;
+    }
+
+    .toggle-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 179, 0, 0.25);
+      border-radius: 20px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      transition: all 0.25s ease;
+      user-select: none;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .toggle-pill:hover {
+      border-color: var(--primary);
+      background: rgba(255, 179, 0, 0.08);
+      color: var(--text);
+    }
+
+    .toggle-pill input {
+      display: none;
+    }
+
+    .toggle-slider {
+      width: 28px;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      position: relative;
+      transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      top: 2px;
+      left: 2px;
+      transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .toggle-pill input:checked + .toggle-slider {
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .toggle-pill input:checked + .toggle-slider::before {
+      transform: translateX(12px);
+      background: #000;
+    }
+
+    .toggle-pill input:checked ~ .toggle-label {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
     /* Text Command Input Bar */
     .input-bar {
       width: 100%;
@@ -350,6 +423,14 @@
 
     <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with Brahma</div>
 
+    <div class="voice-controls">
+      <label class="toggle-pill" id="autoListenToggle" title="Continuous Hands-Free Conversation Mode">
+        <input type="checkbox" id="autoListenCheck" checked />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Hands-Free Live Mode</span>
+      </label>
+    </div>
+
     <div class="chat-box" id="chatBox">
       <div class="msg sys">⚡ Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
     </div>
@@ -374,9 +455,23 @@
     const chatBox = document.getElementById('chatBox');
     const cmdInput = document.getElementById('cmdInput');
     const sendBtn = document.getElementById('sendBtn');
+    const autoListenCheck = document.getElementById('autoListenCheck');
 
     let isRecording = false;
+    let isSpeakingNow = false;
+    let audioPlaybackTimer = null;
+    let restartTimer = null;
     let recognition = null;
+
+    function scheduleMicRestart(delay = 350) {
+      if (typeof restartTimer !== 'undefined') clearTimeout(restartTimer);
+      if (!autoListenCheck || !autoListenCheck.checked || isSpeakingNow) return;
+      restartTimer = setTimeout(() => {
+        if (autoListenCheck && autoListenCheck.checked && !isSpeakingNow && !isRecording) {
+          startListening();
+        }
+      }, delay);
+    }
 
     // 1. Poll Device & Server Status
     async function checkStatus() {
@@ -429,52 +524,96 @@
         }
         if (finalTranscript) {
           statusSubtitle.textContent = '"' + finalTranscript + '"';
+          stopListening();
           sendText(finalTranscript);
         }
       };
+
+
 
       recognition.onerror = (e) => {
         console.warn('Speech error:', e);
         if (e.error === 'not-allowed') {
           appendMsg('sys', 'Microphone permission blocked. Please allow mic access in your browser address bar.');
           statusSubtitle.textContent = 'Microphone permission denied.';
+          stopListening();
         } else if (e.error === 'no-speech') {
-          statusSubtitle.textContent = 'No speech detected. Click the orb to speak.';
+          if (autoListenCheck && autoListenCheck.checked && !isSpeakingNow) {
+            statusSubtitle.textContent = 'Listening to your voice...';
+            scheduleMicRestart(350);
+          } else {
+            stopListening();
+          }
         } else {
           statusSubtitle.textContent = 'Mic status: ' + e.error;
+          stopListening();
         }
-        stopListening();
       };
 
       recognition.onend = () => {
-        stopListening();
+        isRecording = false;
+        if (autoListenCheck && autoListenCheck.checked && !isSpeakingNow && statusSubtitle.textContent.includes('Listening')) {
+          scheduleMicRestart(350);
+        } else if (!isSpeakingNow) {
+          micBtn.classList.remove('active');
+          micLabel.textContent = 'Speak';
+        }
       };
     }
 
-    function toggleListening() {
-      if (!recognition) {
-        alert('Web Speech is not supported on this browser. You can type commands in the text box below, or run laptop_worker.py on your laptop for continuous native audio.');
-        return;
-      }
-      if (isRecording) {
-        recognition.stop();
-      } else {
-        try {
-          recognition.start();
-        } catch (err) {
-          console.warn('Start recognition error:', err);
-        }
+    function startListening() {
+      if (!recognition || isRecording || isSpeakingNow) return;
+      try {
+        recognition.start();
+      } catch (err) {
+        console.warn('startListening error:', err);
       }
     }
 
     function stopListening() {
+      if (typeof restartTimer !== 'undefined') clearTimeout(restartTimer);
+      if (recognition && isRecording) {
+        try {
+          recognition.stop();
+        } catch (err) {
+          console.warn('stopListening error:', err);
+        }
+      }
       isRecording = false;
       micBtn.classList.remove('active');
       micLabel.textContent = 'Speak';
-      statusSubtitle.textContent = 'Click the orb or type below to speak';
+    }
+
+    function toggleListening() {
+      if (!recognition) {
+        alert('Web Speech is not supported on this browser. You can type commands in the text box below.');
+        return;
+      }
+      initAudioContext();
+      if (isRecording) {
+        if (autoListenCheck) autoListenCheck.checked = false;
+        stopListening();
+        statusSubtitle.textContent = 'Mic paused. Click orb to resume';
+      } else {
+        if (autoListenCheck) autoListenCheck.checked = true;
+        startListening();
+      }
     }
 
     micBtn.addEventListener('click', toggleListening);
+
+    if (autoListenCheck) {
+      autoListenCheck.addEventListener('change', () => {
+        if (!autoListenCheck.checked) {
+          clearTimeout(restartTimer);
+          if (isRecording) stopListening();
+        } else {
+          if (!isSpeakingNow && !isRecording) {
+            startListening();
+          }
+        }
+      });
+    }
 
     // 3. Web Audio Streaming Engine for Gemini Native Voice (24kHz PCM)
     let audioCtx = null;
@@ -499,6 +638,12 @@
       try {
         initAudioContext();
         hasReceivedAudioThisTurn = true;
+        isSpeakingNow = true;
+
+        if (isRecording) {
+          stopListening();
+        }
+
         const binaryString = window.atob(b64Data);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -527,6 +672,7 @@
 
         // Visual pulse on orb while speaking
         micBtn.classList.add('speaking');
+        clearTimeout(audioPlaybackTimer);
         source.onended = () => {
           if (audioCtx.currentTime >= nextAudioTime - 0.05) {
             micBtn.classList.remove('speaking');
@@ -534,6 +680,19 @@
         };
       } catch (err) {
         console.error('PCM play error:', err);
+      }
+    }
+
+    function onAssistantFinishedSpeaking() {
+      isSpeakingNow = false;
+      micBtn.classList.remove('speaking');
+
+      // If Hands-Free Live Mode is enabled, automatically re-arm the mic!
+      if (autoListenCheck && autoListenCheck.checked) {
+        statusSubtitle.textContent = 'Listening to your voice...';
+        scheduleMicRestart(350);
+      } else {
+        statusSubtitle.textContent = 'Click the orb or type below to speak';
       }
     }
 
@@ -553,6 +712,11 @@
           const msg = JSON.parse(evt.data);
           if (msg.type === 'audio_chunk') {
             playPcmChunk(msg.data);
+          } else if (msg.type === 'turn_complete') {
+            const remainingSec = Math.max(0, nextAudioTime - audioCtx.currentTime);
+            const waitMs = Math.round(remainingSec * 1000) + 350;
+            clearTimeout(audioPlaybackTimer);
+            audioPlaybackTimer = setTimeout(onAssistantFinishedSpeaking, waitMs);
           } else if (msg.type === 'transcript') {
             if (msg.role === 'task_progress') {
               appendMsg('sys', '⚡ ' + msg.text);
@@ -560,6 +724,10 @@
             } else if (msg.role === 'assistant') {
               appendMsg('ai', msg.text);
               statusSubtitle.textContent = msg.text;
+              if (!hasReceivedAudioThisTurn) {
+                clearTimeout(audioPlaybackTimer);
+                audioPlaybackTimer = setTimeout(onAssistantFinishedSpeaking, 1000);
+              }
               hasReceivedAudioThisTurn = false;
             } else if (msg.role === 'user') {
               hasReceivedAudioThisTurn = false;

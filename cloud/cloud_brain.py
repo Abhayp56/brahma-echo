@@ -109,11 +109,13 @@ class CloudBrain:
         tool_dispatcher: Optional[RemoteToolDispatcher] = None,
         on_audio_out: Optional[Callable[[bytes], None]] = None,
         on_transcript: Optional[Callable[[str, str], None]] = None,
+        on_turn_complete: Optional[Callable[[], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
     ):
         self.dispatcher = tool_dispatcher
         self.on_audio_out = on_audio_out
         self.on_transcript = on_transcript
+        self.on_turn_complete = on_turn_complete
         self.on_log = on_log or (lambda msg: logger.info(f"[BrainLog] {msg}"))
 
         self.session = None
@@ -336,6 +338,12 @@ class CloudBrain:
                                     for fut in list(self._pending_text_futures):
                                         if not fut.done():
                                             fut.set_result(full_out)
+
+                                    if self.on_turn_complete and not response.tool_call:
+                                        try:
+                                            self.on_turn_complete()
+                                        except Exception:
+                                            pass
 
                             # Handle tool call requests from Gemini
                             if response.tool_call:
