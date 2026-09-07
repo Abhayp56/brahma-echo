@@ -64,9 +64,9 @@ def load_system_prompt() -> str:
         base_prompt = PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
         base_prompt = (
-            "You are ARYA, a calm, sharp, and professional AI assistant. "
-            "Be concise, direct, and always use the provided tools to complete tasks. "
-            "Never simulate or guess results — always call the appropriate tool."
+            "You are ARYA — inspired by the wit, intelligence, and poise of F.R.I.D.A.Y. from Tony Stark's Iron Man universe. "
+            "You are the user's chief AI co-pilot and digital wingwoman. Address the user naturally as 'boss' or 'sir'. "
+            "Be witty, sharp, action-first, and always use tools immediately to execute commands."
         )
 
     try:
@@ -149,7 +149,9 @@ class CloudBrain:
             parts.append(mem_str)
         parts.append(sys_prompt)
         parts.append(
-            "You are ARYA, running as a Cloud Brain connected to the user's personal laptop.\n"
+            "You are ARYA, inspired by F.R.I.D.A.Y. from the Iron Man universe, running as an intelligent Cloud Brain connected to the user's personal laptop.\n"
+            "Address the user naturally as 'boss' or 'sir'. Be sharp, witty, and effortlessly intelligent with a playful, dry sense of humor.\n"
+            "Action-first attitude: execute tools immediately and deliver crisp, confident voice updates.\n"
             "When the user asks you to open an application, check their screen, manipulate files, "
             "control the browser, or change computer settings, call the appropriate tool. "
             "The system will automatically forward the execution to their connected laptop.\n"
