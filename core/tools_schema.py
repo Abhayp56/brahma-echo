@@ -489,6 +489,49 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "update_memory",
+        "description": (
+            "Alter or update an existing personal fact in long-term memory when the user's situation changes "
+            "(e.g., moved to a new city, changed preferences, updated project goals). "
+            "Replaces the existing value for that category and key."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "category": {"type": "STRING", "description": "identity | preferences | projects | relationships | wishes | notes"},
+                "key": {"type": "STRING", "description": "Short snake_case key to update"},
+                "new_value": {"type": "STRING", "description": "Updated concise value in English"}
+            },
+            "required": ["category", "key", "new_value"]
+        }
+    },
+    {
+        "name": "delete_memory",
+        "description": (
+            "Permanently delete or forget a fact from long-term memory when the user requests it or "
+            "when information is obsolete/cancelled."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "category": {"type": "STRING", "description": "identity | preferences | projects | relationships | wishes | notes"},
+                "key": {"type": "STRING", "description": "Short snake_case key to delete"}
+            },
+            "required": ["category", "key"]
+        }
+    },
+    {
+        "name": "search_memory",
+        "description": "Search long-term memory for specific facts, past projects, preferences, or details.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {"type": "STRING", "description": "Search keyword or topic to search for in memory"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "spotify_controller",
         "description": "Plays and controls music via Spotify and Google Chrome.",
         "parameters": {

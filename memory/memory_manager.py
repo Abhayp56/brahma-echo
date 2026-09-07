@@ -19,6 +19,15 @@ MAX_VALUE_LENGTH = 380
 MEMORY_MAX_CHARS = 2200
 
 
+from memory.supabase_memory import (
+    is_supabase_configured,
+    load_all_memories_supabase,
+    save_or_update_memory_supabase,
+    delete_memory_supabase,
+    search_memories_supabase,
+)
+
+
 def _empty_memory() -> dict:
     return {
         "identity":      {},
@@ -31,6 +40,11 @@ def _empty_memory() -> dict:
 
 
 def load_memory() -> dict:
+    if is_supabase_configured():
+        supa_mem = load_all_memories_supabase()
+        if supa_mem is not None:
+            return supa_mem
+
     if not MEMORY_PATH.exists():
         return _empty_memory()
 
@@ -45,7 +59,7 @@ def load_memory() -> dict:
                 return data
             return _empty_memory()
         except Exception as e:
-            print(f"[Memory] ⚠️ Load error: {e}")
+            print(f"[Memory Warning] Load error: {e}")
             return _empty_memory()
 
 
@@ -72,7 +86,7 @@ def _trim_to_limit(memory: dict) -> dict:
         if len(json.dumps(memory, ensure_ascii=False)) <= MEMORY_MAX_CHARS:
             break
         del memory[cat][key]
-        print(f"[Memory] 🗑️  Trimmed {cat}/{key} (limit: {MEMORY_MAX_CHARS} chars)")
+        print(f"[Memory Trimmed] {cat}/{key} (limit: {MEMORY_MAX_CHARS} chars)")
 
     return memory
 
@@ -130,10 +144,17 @@ def update_memory(memory_update: dict) -> dict:
     if not isinstance(memory_update, dict) or not memory_update:
         return load_memory()
 
+    if is_supabase_configured():
+        for cat, items in memory_update.items():
+            if isinstance(items, dict):
+                for k, v in items.items():
+                    val = v.get("value", str(v)) if isinstance(v, dict) else str(v)
+                    save_or_update_memory_supabase(cat, k, val)
+
     memory = load_memory()
     if _recursive_update(memory, memory_update):
         save_memory(memory)
-        print(f"[Memory] 💾 Saved: {list(memory_update.keys())}")
+        print(f"[Memory Saved] {list(memory_update.keys())}")
     return memory
 
 
@@ -214,7 +235,7 @@ def extract_memory(user_text: str, brahma_text: str, api_key: str = "") -> dict:
         return {}
     except Exception as e:
         if "429" not in str(e):
-            print(f"[Memory] ⚠️ Extract failed: {e}")
+            print(f"[Memory Warning] Extract failed: {e}")
         return {}
 
 
@@ -304,6 +325,9 @@ def remember(key: str, value: str, category: str = "notes") -> str:
 
 
 def forget(key: str, category: str = "notes") -> str:
+    if is_supabase_configured():
+        delete_memory_supabase(category, key)
+
     memory = load_memory()
     cat    = memory.get(category, {})
     if key in cat:
@@ -314,6 +338,23 @@ def forget(key: str, category: str = "notes") -> str:
     return f"Not found: {category}/{key}"
 
 forget_memory = forget
+
+
+def search_memory(query: str) -> list[dict]:
+    """Search memories across categories and keys."""
+    if is_supabase_configured():
+        return search_memories_supabase(query)
+
+    mem = load_memory()
+    q = query.lower()
+    results = []
+    for cat, items in mem.items():
+        if isinstance(items, dict):
+            for k, entry in items.items():
+                val = entry.get("value", "") if isinstance(entry, dict) else str(entry)
+                if q in k.lower() or q in val.lower():
+                    results.append({"category": cat, "key": k, "value": val})
+    return results
 
 
 CHAT_HISTORY_PATH = BASE_DIR / "memory" / "chat_history.json"

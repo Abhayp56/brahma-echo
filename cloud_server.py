@@ -34,6 +34,8 @@ from core.distributed.protocol import (
     new_request_id,
 )
 from cloud.cloud_brain import CloudBrain, RemoteToolDispatcher
+from memory.memory_manager import load_memory, update_memory, forget
+from memory.supabase_memory import is_supabase_configured
 
 # Configure logging
 logging.basicConfig(
@@ -229,6 +231,36 @@ async def post_command(data: Dict[str, Any]):
         raise HTTPException(status_code=503, detail="Brain not ready.")
     reply = await brain.handle_text_command(text, wait_for_response=True, timeout=20.0)
     return {"status": "success", "text": text, "reply": reply or "Done."}
+
+
+@app.get("/api/memories")
+async def get_memories():
+    """Retrieve all structured memories."""
+    return {
+        "supabase_connected": is_supabase_configured(),
+        "memories": load_memory(),
+    }
+
+
+@app.post("/api/memories")
+async def save_user_memory(data: Dict[str, Any]):
+    """Manually add or update a memory fact."""
+    category = data.get("category", "notes")
+    key = data.get("key", "").strip()
+    value = data.get("value", "").strip()
+    if not key or not value:
+        raise HTTPException(status_code=400, detail="Missing key or value.")
+    update_memory({category: {key: {"value": value}}})
+    return {"status": "success", "category": category, "key": key, "value": value}
+
+
+@app.delete("/api/memories")
+async def delete_user_memory(category: str, key: str):
+    """Delete a memory fact."""
+    if not key or not category:
+        raise HTTPException(status_code=400, detail="Missing category or key.")
+    res = forget(key, category)
+    return {"status": "success", "result": res}
 
 
 @app.websocket("/ws/web")

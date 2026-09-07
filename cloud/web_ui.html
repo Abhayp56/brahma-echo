@@ -87,6 +87,35 @@
       font-weight: 500;
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .memory-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 229, 255, 0.08);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      color: var(--primary);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+
+    .memory-btn:hover {
+      background: rgba(0, 229, 255, 0.18);
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+      transform: translateY(-1px);
+    }
+
     .device-status {
       display: flex;
       align-items: center;
@@ -386,9 +415,191 @@
       border-top: 1px solid rgba(255, 255, 255, 0.06);
     }
 
-    footer a {
+    /* Memory Modal Styling */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 20px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: #0d131f;
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 229, 255, 0.1);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 680px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h2 {
+      font-size: 17px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .modal-badge.online {
+      background: rgba(0, 230, 118, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+    }
+
+    .modal-badge.offline {
+      background: rgba(255, 171, 0, 0.15);
+      color: #ffab00;
+      border: 1px solid rgba(255, 171, 0, 0.3);
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+      transition: 0.2s ease;
+    }
+
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    .modal-body {
+      padding: 20px 24px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .mem-cat-group {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+
+    .mem-cat-title {
+      font-size: 12px;
       color: var(--primary);
-      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .mem-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mem-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .mem-item-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .mem-item-key {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .mem-item-val {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .mem-del-btn {
+      background: rgba(255, 82, 82, 0.1);
+      border: 1px solid rgba(255, 82, 82, 0.2);
+      color: var(--red);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .mem-del-btn:hover {
+      background: var(--red);
+      color: #000;
+    }
+
+    .add-mem-form {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .add-mem-form select,
+    .add-mem-form input {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .add-mem-form input {
+      flex: 1;
+    }
+
+    .add-mem-btn {
+      background: var(--primary);
+      border: none;
+      color: #000;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -402,9 +613,14 @@
         <span>Cloud Brain & Voice Engine</span>
       </div>
     </div>
-    <div class="device-status" id="deviceStatus">
-      <div class="dot" id="statusDot"></div>
-      <span id="statusText">Checking Laptop...</span>
+    <div class="header-actions">
+      <button class="memory-btn" id="openMemoryBtn" title="View & Manage Permanent Cloud Memory">
+        🧠 Memory Bank
+      </button>
+      <div class="device-status" id="deviceStatus">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Checking Laptop...</span>
+      </div>
     </div>
   </header>
 
@@ -789,6 +1005,150 @@
       chatBox.appendChild(el);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
+
+    // 6. Memory Bank Modal & Management
+    const memoryModal = document.getElementById('memoryModal');
+    const openMemoryBtn = document.getElementById('openMemoryBtn');
+    const closeMemoryBtn = document.getElementById('closeMemoryBtn');
+    const memoryListContainer = document.getElementById('memoryListContainer');
+    const memoryStatusBadge = document.getElementById('memoryStatusBadge');
+    const newMemCat = document.getElementById('newMemCat');
+    const newMemKey = document.getElementById('newMemKey');
+    const newMemVal = document.getElementById('newMemVal');
+    const addMemBtn = document.getElementById('addMemBtn');
+
+    openMemoryBtn.addEventListener('click', () => {
+      memoryModal.classList.add('active');
+      fetchAndRenderMemories();
+    });
+
+    closeMemoryBtn.addEventListener('click', () => {
+      memoryModal.classList.remove('active');
+    });
+
+    memoryModal.addEventListener('click', (e) => {
+      if (e.target === memoryModal) memoryModal.classList.remove('active');
+    });
+
+    async function fetchAndRenderMemories() {
+      try {
+        const res = await fetch('/api/memories');
+        const data = await res.json();
+        const isSupa = data.supabase_connected;
+        memoryStatusBadge.textContent = isSupa ? 'Supabase Connected ⚡' : 'Local Fallback Storage';
+        memoryStatusBadge.className = 'modal-badge ' + (isSupa ? 'online' : 'offline');
+
+        const mem = data.memories || {};
+        memoryListContainer.innerHTML = '';
+
+        let hasAny = false;
+        for (const [category, items] of Object.entries(mem)) {
+          const itemEntries = Object.entries(items || {});
+          if (itemEntries.length === 0) continue;
+          hasAny = true;
+
+          const group = document.createElement('div');
+          group.className = 'mem-cat-group';
+
+          const title = document.createElement('div');
+          title.className = 'mem-cat-title';
+          title.textContent = category;
+          group.appendChild(title);
+
+          const list = document.createElement('div');
+          list.className = 'mem-list';
+
+          for (const [k, v] of itemEntries) {
+            const val = typeof v === 'object' && v.value ? v.value : String(v);
+            const upd = typeof v === 'object' && v.updated ? ' (' + v.updated + ')' : '';
+
+            const item = document.createElement('div');
+            item.className = 'mem-item';
+            item.innerHTML = `
+              <div class="mem-item-left">
+                <span class="mem-item-key">${k}</span>
+                <span class="mem-item-val">${val}${upd}</span>
+              </div>
+              <button class="mem-del-btn" data-cat="${category}" data-key="${k}">Delete</button>
+            `;
+            list.appendChild(item);
+          }
+
+          group.appendChild(list);
+          memoryListContainer.appendChild(group);
+        }
+
+        if (!hasAny) {
+          memoryListContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 24px;">No memories stored yet. Speak with Brahma to automatically record facts!</div>';
+        }
+
+        // Attach delete handlers
+        document.querySelectorAll('.mem-del-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const cat = btn.getAttribute('data-cat');
+            const key = btn.getAttribute('data-key');
+            if (confirm(`Delete '${cat}/${key}' from memory?`)) {
+              await fetch(`/api/memories?category=${encodeURIComponent(cat)}&key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+              fetchAndRenderMemories();
+            }
+          });
+        });
+      } catch (err) {
+        memoryListContainer.innerHTML = '<div style="color: var(--red); text-align: center; padding: 20px;">Failed to load memories: ' + err.message + '</div>';
+      }
+    }
+
+    addMemBtn.addEventListener('click', async () => {
+      const category = newMemCat.value;
+      const key = newMemKey.value.trim();
+      const value = newMemVal.value.trim();
+      if (!key || !value) {
+        alert('Please enter both key and value.');
+        return;
+      }
+      try {
+        await fetch('/api/memories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, key, value })
+        });
+        newMemKey.value = '';
+        newMemVal.value = '';
+        fetchAndRenderMemories();
+      } catch (err) {
+        alert('Failed to save memory: ' + err.message);
+      }
+    });
   </script>
+
+  <!-- Memory Bank Modal -->
+  <div class="modal-overlay" id="memoryModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🧠 Brahma Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
+        <button class="modal-close" id="closeMemoryBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="memoryListContainer"></div>
+
+        <div class="mem-cat-group">
+          <div class="mem-cat-title">Teach Brahma a Fact Manually</div>
+          <div class="add-mem-form">
+            <select id="newMemCat">
+              <option value="identity">identity</option>
+              <option value="preferences">preferences</option>
+              <option value="projects">projects</option>
+              <option value="relationships">relationships</option>
+              <option value="wishes">wishes</option>
+              <option value="notes" selected>notes</option>
+            </select>
+            <input type="text" id="newMemKey" placeholder="Key (e.g. coffee)" />
+            <input type="text" id="newMemVal" placeholder="Value (e.g. oat latte)" />
+            <button class="add-mem-btn" id="addMemBtn">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

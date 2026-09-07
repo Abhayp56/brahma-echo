@@ -26,6 +26,8 @@ from memory.memory_manager import (
     load_memory,
     update_memory,
     format_memory_for_prompt,
+    forget,
+    search_memory,
 )
 from core.identity import identity
 
@@ -212,18 +214,53 @@ class CloudBrain:
 
         self.log(f"🔧 Tool Request from Gemini: {name} (args: {args})")
 
-        # 1. Cloud-native tools
+        # 1. Cloud-native Memory tools (Supabase-backed & locally synced)
         if name == "save_memory":
             category = args.get("category", "notes")
             key = args.get("key", "")
             value = args.get("value", "")
             if key and value:
                 update_memory({category: {key: {"value": value}}})
-                self.log(f"💾 Memory saved on server: {category}/{key} = {value}")
+                self.log(f"💾 Memory saved: {category}/{key} = {value}")
             return types.FunctionResponse(
                 id=call_id,
                 name=name,
-                response={"result": "Memory saved successfully.", "silent": True},
+                response={"result": f"Memory '{category}/{key}' saved successfully.", "silent": True},
+            )
+
+        if name == "update_memory":
+            category = args.get("category", "notes")
+            key = args.get("key", "")
+            new_value = args.get("new_value", "")
+            if key and new_value:
+                update_memory({category: {key: {"value": new_value}}})
+                self.log(f"✏️ Memory updated: {category}/{key} = {new_value}")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"result": f"Memory '{category}/{key}' updated to '{new_value}'.", "silent": True},
+            )
+
+        if name == "delete_memory":
+            category = args.get("category", "notes")
+            key = args.get("key", "")
+            if key:
+                forget(key, category)
+                self.log(f"🗑️ Memory deleted: {category}/{key}")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"result": f"Memory '{category}/{key}' deleted.", "silent": True},
+            )
+
+        if name == "search_memory":
+            query = args.get("query", "")
+            results = search_memory(query)
+            self.log(f"🔍 Memory searched for '{query}': found {len(results)} items")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"results": results},
             )
 
         # 2. Desktop actions delegated to connected laptop worker
