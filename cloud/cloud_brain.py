@@ -281,6 +281,12 @@ class CloudBrain:
             progress_msg = "Controlling the browser on your laptop..."
         elif name == "screen_process":
             progress_msg = "Inspecting your laptop screen..."
+        elif name == "autonomous_operator":
+            goal = args.get("goal") or "task"
+            progress_msg = f"Starting autonomous vision operator for: {goal}..."
+        elif name == "terminal_agent":
+            cmd = args.get("command") or "command"
+            progress_msg = f"Executing terminal engineer: {cmd[:40]}..."
         else:
             progress_msg = f"Working on {clean_name} on your laptop..."
 

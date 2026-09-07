@@ -569,5 +569,63 @@ TOOL_DECLARATIONS = [
             },
             "required": []
         }
+    },
+    {
+        "name": "autonomous_operator",
+        "description": (
+            "An autonomous multi-step computer vision operator agent. "
+            "Use this when the user gives a complex multi-step desktop or web goal (e.g. 'go to amazon and add X to cart', "
+            "'open spotify and search for Y', 'fill out this form on screen'). "
+            "The agent captures the screen in real-time, plans the next UI step, clicks, types, and verifies results in a continuous loop until complete."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "goal": {
+                    "type": "STRING",
+                    "description": "Clear natural language goal for the operator to accomplish on the user's laptop."
+                },
+                "max_steps": {
+                    "type": "INTEGER",
+                    "description": "Maximum vision-action steps to attempt (default: 10, max: 15)."
+                },
+                "target_app": {
+                    "type": "STRING",
+                    "description": "Optional application name to open or bring to focus before starting (e.g. 'chrome', 'spotify', 'notepad')."
+                }
+            },
+            "required": ["goal"]
+        }
+    },
+    {
+        "name": "terminal_agent",
+        "description": (
+            "A self-healing PowerShell & Terminal command execution engineer. "
+            "Executes PowerShell or CMD commands on the user's laptop (e.g., system diagnostics, network checks, ping, "
+            "git operations, software package management with winget/pip/npm). "
+            "If a command fails, it automatically analyzes the error stack trace, generates an automated fix, executes the fix, and retries the command."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "command": {
+                    "type": "STRING",
+                    "description": "The exact PowerShell or CMD command to execute."
+                },
+                "working_dir": {
+                    "type": "STRING",
+                    "description": "Optional directory path to execute the command in."
+                },
+                "auto_heal": {
+                    "type": "BOOLEAN",
+                    "description": "Automatically diagnose and fix errors if command fails (default: true)."
+                },
+                "shell": {
+                    "type": "STRING",
+                    "description": "'powershell' (default) or 'cmd'."
+                }
+            },
+            "required": ["command"]
+        }
     }
 ]

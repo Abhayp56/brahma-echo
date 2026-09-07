@@ -170,4 +170,12 @@ class LocalToolDispatcher:
             from actions.screen_processor import screen_process
             return lambda a: screen_process(parameters=a, response=None, player=self.player, session_memory=None)
 
+        elif tool_name == "autonomous_operator":
+            from actions.vision_operator import autonomous_operator
+            return lambda a: autonomous_operator(parameters=a, player=self.player, speak=self.speak_fn)
+
+        elif tool_name == "terminal_agent":
+            from actions.terminal_agent import terminal_agent
+            return lambda a: terminal_agent(parameters=a, player=self.player, speak=self.speak_fn)
+
         return None
