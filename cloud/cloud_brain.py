@@ -64,13 +64,13 @@ def load_system_prompt() -> str:
         base_prompt = PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
         base_prompt = (
-            "You are Brahma Echo, a calm, direct, and professional AI assistant. "
+            "You are ARYA, a calm, sharp, and professional AI assistant. "
             "Be concise, direct, and always use the provided tools to complete tasks. "
             "Never simulate or guess results — always call the appropriate tool."
         )
 
     try:
-        ast_name = identity.get_assistant_name() or "Brahma Echo"
+        ast_name = identity.get_assistant_name() or "ARYA"
         own_name = identity.get_owner_name() or "the user"
         role = identity.get_owner_role()
         mode = identity.get_behavior_mode()
@@ -149,7 +149,7 @@ class CloudBrain:
             parts.append(mem_str)
         parts.append(sys_prompt)
         parts.append(
-            "You are running as a Cloud Brain connected to the user's personal laptop.\n"
+            "You are ARYA, running as a Cloud Brain connected to the user's personal laptop.\n"
             "When the user asks you to open an application, check their screen, manipulate files, "
             "control the browser, or change computer settings, call the appropriate tool. "
             "The system will automatically forward the execution to their connected laptop.\n"
@@ -169,7 +169,7 @@ class CloudBrain:
             session_resumption=types.SessionResumptionConfig(),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Charon")
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
                 )
             ),
         )

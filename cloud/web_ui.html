@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Brahma Echo — Cloud Voice & Brain Hub</title>
+  <title>ARYA — Cloud Voice & Brain Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -609,7 +609,7 @@
     <div class="brand">
       <div class="logo-badge">⚡</div>
       <div>
-        <h1>Brahma Echo</h1>
+        <h1>ARYA</h1>
         <span>Cloud Brain & Voice Engine</span>
       </div>
     </div>
@@ -628,7 +628,7 @@
     <div class="orb-container">
       <div class="orb-ring ring-1"></div>
       <div class="orb-ring ring-2"></div>
-      <button class="mic-button" id="micBtn" title="Click to speak to Brahma">
+      <button class="mic-button" id="micBtn" title="Click to speak to ARYA">
         <svg class="mic-icon" viewBox="0 0 24 24">
           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
           <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
@@ -637,7 +637,7 @@
       </button>
     </div>
 
-    <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with Brahma</div>
+    <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with ARYA</div>
 
     <div class="voice-controls">
       <label class="toggle-pill" id="autoListenToggle" title="Continuous Hands-Free Conversation Mode">
@@ -648,7 +648,7 @@
     </div>
 
     <div class="chat-box" id="chatBox">
-      <div class="msg sys">⚡ Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
+      <div class="msg sys">⚡ ARYA Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
     </div>
 
     <div class="input-bar">
@@ -970,7 +970,7 @@
 
       appendMsg('user', text);
       cmdInput.value = '';
-      statusSubtitle.textContent = 'Brahma is thinking...';
+      statusSubtitle.textContent = 'ARYA is thinking...';
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'text_command', text: text }));
@@ -1001,7 +1001,7 @@
     function appendMsg(type, content) {
       const el = document.createElement('div');
       el.className = 'msg ' + type;
-      el.textContent = (type === 'user' ? 'You: ' : type === 'ai' ? 'Brahma: ' : '') + content;
+      el.textContent = (type === 'user' ? 'You: ' : type === 'ai' ? 'ARYA: ' : '') + content;
       chatBox.appendChild(el);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
@@ -1079,7 +1079,7 @@
         }
 
         if (!hasAny) {
-          memoryListContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 24px;">No memories stored yet. Speak with Brahma to automatically record facts!</div>';
+          memoryListContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 24px;">No memories stored yet. Speak with ARYA to automatically record facts!</div>';
         }
 
         // Attach delete handlers
@@ -1125,14 +1125,14 @@
   <div class="modal-overlay" id="memoryModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>🧠 Brahma Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
+        <h2>🧠 ARYA Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
         <button class="modal-close" id="closeMemoryBtn">&times;</button>
       </div>
       <div class="modal-body">
         <div id="memoryListContainer"></div>
 
         <div class="mem-cat-group">
-          <div class="mem-cat-title">Teach Brahma a Fact Manually</div>
+          <div class="mem-cat-title">Teach ARYA a Fact Manually</div>
           <div class="add-mem-form">
             <select id="newMemCat">
               <option value="identity">identity</option>

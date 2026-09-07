@@ -41,7 +41,7 @@ IMG_MAX_H = 360
 JPEG_Q    = 55
 
 SYSTEM_PROMPT = (
-    "You are Brahma AI - Lite, an open-source assistant. "
+    "You are ARYA, an intelligent AI assistant. "
     "Analyze images with technical precision and intelligence. "
     "Help the user in a way they can understand — don't be overly complex. "
     "Be concise, smart, and helpful like Tony Stark's AI assistant. "
@@ -213,7 +213,7 @@ class _LiveSession:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Charon"
+                        voice_name="Aoede"
                     )
                 )
             ),

@@ -141,7 +141,7 @@ class WebSocketToolDispatcher(RemoteToolDispatcher):
                 future.set_result(payload)
 
 
-app = FastAPI(title="Brahma Echo Cloud Brain", version="2.0.0")
+app = FastAPI(title="ARYA Cloud Brain", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -192,7 +192,7 @@ def broadcast_turn_complete_to_web():
 @app.on_event("startup")
 async def on_startup():
     global brain
-    logger.info("Initializing Brahma Cloud Brain...")
+    logger.info("Initializing ARYA Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
         on_audio_out=broadcast_audio_to_web,
@@ -210,7 +210,7 @@ async def get_web_ui():
     ui_path = BASE_DIR / "cloud" / "web_ui.html"
     if ui_path.exists():
         return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>Brahma Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
+    return HTMLResponse(content="<h1>ARYA Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
 
 
 @app.get("/api/status")
