@@ -325,8 +325,9 @@ def remember(key: str, value: str, category: str = "notes") -> str:
 
 
 def forget(key: str, category: str = "notes") -> str:
+    supa_deleted = False
     if is_supabase_configured():
-        delete_memory_supabase(category, key)
+        supa_deleted = delete_memory_supabase(category, key)
 
     memory = load_memory()
     cat    = memory.get(category, {})
@@ -335,6 +336,10 @@ def forget(key: str, category: str = "notes") -> str:
         memory[category] = cat
         save_memory(memory)
         return f"Forgotten: {category}/{key}"
+
+    if supa_deleted:
+        return f"Forgotten: {category}/{key}"
+
     return f"Not found: {category}/{key}"
 
 forget_memory = forget
