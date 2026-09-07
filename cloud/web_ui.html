@@ -651,10 +651,10 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="whatsapp-btn" id="openWhatsAppBtn" title="Manage Server-Side WhatsApp & AI Auto-Replies">
+      <button class="whatsapp-btn" id="openWhatsAppBtn" onclick="openWhatsAppModal()" title="Manage Server-Side WhatsApp & AI Auto-Replies">
         📱 WhatsApp <span class="wa-status-dot" id="waNavDot"></span>
       </button>
-      <button class="memory-btn" id="openMemoryBtn" title="View & Manage Permanent Cloud Memory">
+      <button class="memory-btn" id="openMemoryBtn" onclick="openMemoryModal()" title="View & Manage Permanent Cloud Memory">
         🧠 Memory Bank
       </button>
       <div class="device-status" id="deviceStatus">
@@ -701,6 +701,113 @@
     <span>Host: Render Cloud Service</span>
     <span>Connected to Gemini 2.5 Flash Native Audio</span>
   </footer>
+
+  <!-- Memory Bank Modal -->
+  <div class="modal-overlay" id="memoryModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🧠 ARYA Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
+        <button class="modal-close" id="closeMemoryBtn" onclick="closeMemoryModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="memoryListContainer"></div>
+
+        <div class="mem-cat-group">
+          <div class="mem-cat-title">Teach ARYA a Fact Manually</div>
+          <div class="add-mem-form">
+            <select id="newMemCat">
+              <option value="identity">identity</option>
+              <option value="preferences">preferences</option>
+              <option value="projects">projects</option>
+              <option value="relationships">relationships</option>
+              <option value="contacts">contacts</option>
+              <option value="wishes">wishes</option>
+              <option value="notes" selected>notes</option>
+            </select>
+            <input type="text" id="newMemKey" placeholder="Key (e.g. coffee)" />
+            <input type="text" id="newMemVal" placeholder="Value (e.g. oat latte)" />
+            <button class="add-mem-btn" id="addMemBtn">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp Modal -->
+  <div class="modal-overlay" id="whatsappModal">
+    <div class="modal-card" style="max-width: 720px;">
+      <div class="modal-header">
+        <h2>📱 ARYA WhatsApp Control Center <span class="modal-badge" id="waHeaderBadge" style="background: rgba(37,211,102,0.15); color: #25d366; border: 1px solid #25d366;">Connecting...</span></h2>
+        <button class="modal-close" id="closeWhatsAppBtn" onclick="closeWhatsAppModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; overflow-y: auto;">
+        
+        <!-- Connection State Card -->
+        <div id="waConnectCard" style="display: flex; gap: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(37,211,102,0.2); border-radius: 12px; padding: 18px; align-items: center;">
+          <div id="waQrBox" style="min-width: 170px; height: 170px; background: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <img id="waQrImg" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+            <span id="waQrLoading" style="color: #666; font-size: 12px; text-align: center; padding: 10px;">Generating QR...</span>
+          </div>
+          <div style="flex: 1;">
+            <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 6px; color: #25d366;">Link Your WhatsApp</h3>
+            <p id="waStatusDesc" style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">
+              Scan the QR code with WhatsApp on your phone: <br>
+              <strong>1. Open WhatsApp &gt; Settings / Menu</strong><br>
+              <strong>2. Tap 'Linked Devices' &gt; 'Link a Device'</strong><br>
+              <strong>3. Scan the QR code to connect ARYA 24/7</strong>
+            </p>
+            <div id="waConnectedDetails" style="display: none; margin-bottom: 10px;">
+              <div style="font-size: 13px; color: #fff; margin-bottom: 4px;">Linked Number: <strong id="waLinkedPhone">+...</strong></div>
+              <div style="font-size: 12px; color: var(--text-muted);">Session Active on Server &bull; 24/7 Companion Mode</div>
+            </div>
+            <button id="waDisconnectBtn" style="display: none; background: rgba(255,82,82,0.15); border: 1px solid #ff5252; color: #ff5252; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;">Disconnect / Reset Session</button>
+          </div>
+        </div>
+
+        <!-- AI Conversational Mode Settings -->
+        <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span>🤖 AI Auto-Conversation Mode</span>
+            <span id="waModeBadge" style="font-size: 11px; background: var(--panel-border); color: var(--accent); padding: 2px 8px; border-radius: 10px;">Co-Pilot</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Choose how ARYA interacts with people who message your WhatsApp:</p>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="wa-mode-pill active" data-mode="notify_only" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(255,179,0,0.1); color: #fff; font-size: 12px; cursor: pointer;">
+              🔔 Co-Pilot (Notify Only)
+            </button>
+            <button class="wa-mode-pill" data-mode="whitelist" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 12px; cursor: pointer;">
+              ⭐ VIP Whitelist Mode
+            </button>
+            <button class="wa-mode-pill" data-mode="auto_pilot" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 12px; cursor: pointer;">
+              ⚡ Full Auto-Pilot (F.R.I.D.A.Y.)
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Send Box -->
+        <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📤 Send a WhatsApp Message via ARYA</div>
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <input type="text" id="waQuickRecipient" placeholder="Recipient (Name or +Phone with country code)" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
+            <input type="text" id="waQuickMessage" placeholder="Message text" style="flex: 2; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
+            <button id="waQuickSendBtn" style="background: #25d366; color: #000; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer;">Send</button>
+          </div>
+        </div>
+
+        <!-- Live WhatsApp Chat Feed -->
+        <div style="margin-top: 18px;">
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between;">
+            <span>💬 Recent WhatsApp Activity</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Real-Time Sync</span>
+          </div>
+          <div id="waChatList" style="max-height: 180px; overflow-y: auto; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+            <div style="color: var(--text-muted); text-align: center; padding: 15px;">No recent WhatsApp messages recorded yet.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <script>
     const micBtn = document.getElementById('micBtn');
@@ -1063,18 +1170,24 @@
     const newMemVal = document.getElementById('newMemVal');
     const addMemBtn = document.getElementById('addMemBtn');
 
-    openMemoryBtn.addEventListener('click', () => {
-      memoryModal.classList.add('active');
+    window.openMemoryModal = function() {
+      const m = document.getElementById('memoryModal');
+      if (m) m.classList.add('active');
       fetchAndRenderMemories();
-    });
+    };
 
-    closeMemoryBtn.addEventListener('click', () => {
-      memoryModal.classList.remove('active');
-    });
+    window.closeMemoryModal = function() {
+      const m = document.getElementById('memoryModal');
+      if (m) m.classList.remove('active');
+    };
 
-    memoryModal.addEventListener('click', (e) => {
-      if (e.target === memoryModal) memoryModal.classList.remove('active');
-    });
+    if (openMemoryBtn) openMemoryBtn.addEventListener('click', window.openMemoryModal);
+    if (closeMemoryBtn) closeMemoryBtn.addEventListener('click', window.closeMemoryModal);
+    if (memoryModal) {
+      memoryModal.addEventListener('click', (e) => {
+        if (e.target === memoryModal) window.closeMemoryModal();
+      });
+    }
 
     async function fetchAndRenderMemories() {
       try {
@@ -1186,19 +1299,25 @@
     const waQuickSendBtn = document.getElementById('waQuickSendBtn');
     const waChatList = document.getElementById('waChatList');
 
-    openWhatsAppBtn.addEventListener('click', () => {
-      whatsappModal.classList.add('active');
+    window.openWhatsAppModal = function() {
+      const modal = document.getElementById('whatsappModal');
+      if (modal) modal.classList.add('active');
       fetchWhatsAppStatus();
       fetchWhatsAppChats();
-    });
+    };
 
-    closeWhatsAppBtn.addEventListener('click', () => {
-      whatsappModal.classList.remove('active');
-    });
+    window.closeWhatsAppModal = function() {
+      const modal = document.getElementById('whatsappModal');
+      if (modal) modal.classList.remove('active');
+    };
 
-    whatsappModal.addEventListener('click', (e) => {
-      if (e.target === whatsappModal) whatsappModal.classList.remove('active');
-    });
+    if (openWhatsAppBtn) openWhatsAppBtn.addEventListener('click', window.openWhatsAppModal);
+    if (closeWhatsAppBtn) closeWhatsAppBtn.addEventListener('click', window.closeWhatsAppModal);
+    if (whatsappModal) {
+      whatsappModal.addEventListener('click', (e) => {
+        if (e.target === whatsappModal) window.closeWhatsAppModal();
+      });
+    }
 
     async function fetchWhatsAppStatus() {
       try {
@@ -1377,112 +1496,5 @@
     setInterval(fetchWhatsAppStatus, 5000);
     fetchWhatsAppStatus();
   </script>
-
-  <!-- Memory Bank Modal -->
-  <div class="modal-overlay" id="memoryModal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h2>🧠 ARYA Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
-        <button class="modal-close" id="closeMemoryBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div id="memoryListContainer"></div>
-
-        <div class="mem-cat-group">
-          <div class="mem-cat-title">Teach ARYA a Fact Manually</div>
-          <div class="add-mem-form">
-            <select id="newMemCat">
-              <option value="identity">identity</option>
-              <option value="preferences">preferences</option>
-              <option value="projects">projects</option>
-              <option value="relationships">relationships</option>
-              <option value="contacts">contacts</option>
-              <option value="wishes">wishes</option>
-              <option value="notes" selected>notes</option>
-            </select>
-            <input type="text" id="newMemKey" placeholder="Key (e.g. coffee)" />
-            <input type="text" id="newMemVal" placeholder="Value (e.g. oat latte)" />
-            <button class="add-mem-btn" id="addMemBtn">Save</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- WhatsApp Modal -->
-  <div class="modal-overlay" id="whatsappModal">
-    <div class="modal-card" style="max-width: 720px;">
-      <div class="modal-header">
-        <h2>📱 ARYA WhatsApp Control Center <span class="modal-badge" id="waHeaderBadge" style="background: rgba(37,211,102,0.15); color: #25d366; border: 1px solid #25d366;">Connecting...</span></h2>
-        <button class="modal-close" id="closeWhatsAppBtn">&times;</button>
-      </div>
-      <div class="modal-body" style="padding: 20px; overflow-y: auto;">
-        
-        <!-- Connection State Card -->
-        <div id="waConnectCard" style="display: flex; gap: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(37,211,102,0.2); border-radius: 12px; padding: 18px; align-items: center;">
-          <div id="waQrBox" style="min-width: 170px; height: 170px; background: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-            <img id="waQrImg" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
-            <span id="waQrLoading" style="color: #666; font-size: 12px; text-align: center; padding: 10px;">Generating QR...</span>
-          </div>
-          <div style="flex: 1;">
-            <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 6px; color: #25d366;">Link Your WhatsApp</h3>
-            <p id="waStatusDesc" style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">
-              Scan the QR code with WhatsApp on your phone: <br>
-              <strong>1. Open WhatsApp &gt; Settings / Menu</strong><br>
-              <strong>2. Tap 'Linked Devices' &gt; 'Link a Device'</strong><br>
-              <strong>3. Scan the QR code to connect ARYA 24/7</strong>
-            </p>
-            <div id="waConnectedDetails" style="display: none; margin-bottom: 10px;">
-              <div style="font-size: 13px; color: #fff; margin-bottom: 4px;">Linked Number: <strong id="waLinkedPhone">+...</strong></div>
-              <div style="font-size: 12px; color: var(--text-muted);">Session Active on Server &bull; 24/7 Companion Mode</div>
-            </div>
-            <button id="waDisconnectBtn" style="display: none; background: rgba(255,82,82,0.15); border: 1px solid #ff5252; color: #ff5252; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;">Disconnect / Reset Session</button>
-          </div>
-        </div>
-
-        <!-- AI Conversational Mode Settings -->
-        <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
-          <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <span>🤖 AI Auto-Conversation Mode</span>
-            <span id="waModeBadge" style="font-size: 11px; background: var(--panel-border); color: var(--accent); padding: 2px 8px; border-radius: 10px;">Co-Pilot</span>
-          </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Choose how ARYA interacts with people who message your WhatsApp:</p>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="wa-mode-pill active" data-mode="notify_only" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(255,179,0,0.1); color: #fff; font-size: 12px; cursor: pointer;">
-              🔔 Co-Pilot (Notify Only)
-            </button>
-            <button class="wa-mode-pill" data-mode="whitelist" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 12px; cursor: pointer;">
-              ⭐ VIP Whitelist Mode
-            </button>
-            <button class="wa-mode-pill" data-mode="auto_pilot" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 12px; cursor: pointer;">
-              ⚡ Full Auto-Pilot (F.R.I.D.A.Y.)
-            </button>
-          </div>
-        </div>
-
-        <!-- Quick Send Box -->
-        <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
-          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📤 Send a WhatsApp Message via ARYA</div>
-          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
-            <input type="text" id="waQuickRecipient" placeholder="Recipient (Name or +Phone with country code)" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
-            <input type="text" id="waQuickMessage" placeholder="Message text" style="flex: 2; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
-            <button id="waQuickSendBtn" style="background: #25d366; color: #000; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer;">Send</button>
-          </div>
-        </div>
-
-        <!-- Live WhatsApp Chat Feed -->
-        <div style="margin-top: 18px;">
-          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between;">
-            <span>💬 Recent WhatsApp Activity</span>
-            <span style="font-size: 11px; color: var(--text-muted);">Real-Time Sync</span>
-          </div>
-          <div id="waChatList" style="max-height: 180px; overflow-y: auto; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
-            <div style="color: var(--text-muted); text-align: center; padding: 15px;">No recent WhatsApp messages recorded yet.</div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
 </body>
 </html>
