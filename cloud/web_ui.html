@@ -743,24 +743,75 @@
       <div class="modal-body" style="padding: 20px; overflow-y: auto;">
         
         <!-- Connection State Card -->
-        <div id="waConnectCard" style="display: flex; gap: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(37,211,102,0.2); border-radius: 12px; padding: 18px; align-items: center;">
-          <div id="waQrBox" style="min-width: 170px; height: 170px; background: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-            <img id="waQrImg" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
-            <span id="waQrLoading" style="color: #666; font-size: 12px; text-align: center; padding: 10px;">Generating QR...</span>
+        <div id="waConnectCard" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(37,211,102,0.25); border-radius: 14px; padding: 20px;">
+          
+          <!-- State 1: Active Connection -->
+          <div id="waConnectedDetails" style="display: none; text-align: center; padding: 15px;">
+            <div style="font-size: 40px; margin-bottom: 8px;">🟢</div>
+            <h3 style="font-size: 18px; color: #25d366; margin-bottom: 6px;">WhatsApp Companion Active</h3>
+            <div style="font-size: 14px; color: #fff; margin-bottom: 4px;">Linked Number: <strong id="waLinkedPhone">+...</strong></div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Session Active on Server &bull; 24/7 Companion Mode</div>
+            <button id="waDisconnectBtn" style="background: rgba(255,82,82,0.15); border: 1px solid #ff5252; color: #ff5252; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">Disconnect / Reset Session</button>
           </div>
-          <div style="flex: 1;">
-            <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 6px; color: #25d366;">Link Your WhatsApp</h3>
-            <p id="waStatusDesc" style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">
-              Scan the QR code with WhatsApp on your phone: <br>
-              <strong>1. Open WhatsApp &gt; Settings / Menu</strong><br>
-              <strong>2. Tap 'Linked Devices' &gt; 'Link a Device'</strong><br>
-              <strong>3. Scan the QR code to connect ARYA 24/7</strong>
-            </p>
-            <div id="waConnectedDetails" style="display: none; margin-bottom: 10px;">
-              <div style="font-size: 13px; color: #fff; margin-bottom: 4px;">Linked Number: <strong id="waLinkedPhone">+...</strong></div>
-              <div style="font-size: 12px; color: var(--text-muted);">Session Active on Server &bull; 24/7 Companion Mode</div>
+
+          <!-- State 2: Unlinked (QR Code + Pairing Code Tabs) -->
+          <div id="waUnlinkedContainer">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <div>
+                <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 4px; color: #25d366;">Link Your WhatsApp to ARYA</h3>
+                <p id="waStatusDesc" style="font-size: 12px; color: var(--text-muted); margin: 0;">Choose how you want to link your WhatsApp account:</p>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button id="waTabQrBtn" class="wa-tab-btn active" style="background: rgba(37,211,102,0.2); color: #25d366; border: 1px solid #25d366; padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;">📷 Scan QR</button>
+                <button id="waTabPhoneBtn" class="wa-tab-btn" style="background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;">📱 Phone Code</button>
+              </div>
             </div>
-            <button id="waDisconnectBtn" style="display: none; background: rgba(255,82,82,0.15); border: 1px solid #ff5252; color: #ff5252; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;">Disconnect / Reset Session</button>
+
+            <!-- Tab 1: QR Code Section -->
+            <div id="waQrSection" style="display: flex; gap: 20px; align-items: center; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 12px;">
+              <div id="waQrBox" style="min-width: 220px; width: 220px; height: 220px; background: #ffffff; border-radius: 12px; padding: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                <img id="waQrImg" style="width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; display: none;" />
+                <span id="waQrLoading" style="color: #666; font-size: 12px; text-align: center; padding: 10px;">Generating Fresh QR Code...</span>
+              </div>
+              <div style="flex: 1;">
+                <div style="font-size: 13px; color: #fff; line-height: 1.6; margin-bottom: 14px;">
+                  1. Open <strong>WhatsApp</strong> on your phone<br>
+                  2. Tap <strong>Settings</strong> (or <strong>⋮ Menu</strong>) &gt; <strong>Linked Devices</strong><br>
+                  3. Tap <strong>Link a Device</strong> and point camera at the QR code
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button id="waRefreshQrBtn" style="background: rgba(0,229,255,0.15); border: 1px solid var(--accent); color: var(--accent); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                    🔄 Refresh QR Code
+                  </button>
+                  <span id="waQrTimer" style="font-size: 11px; color: var(--text-muted);">Auto-updating live</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2: Phone Pairing Code Section -->
+            <div id="waPhoneSection" style="display: none; background: rgba(0,0,0,0.2); padding: 18px; border-radius: 12px;">
+              <div style="font-size: 13px; color: #fff; margin-bottom: 12px;">
+                Link directly with your phone number — <strong>no camera scan required</strong>:
+              </div>
+              <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+                <input type="text" id="waPairPhoneInput" placeholder="Phone with country code (e.g. 919876543210)" style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; outline: none;" />
+                <button id="waGetPairCodeBtn" style="background: #25d366; color: #000; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;">
+                  Get 8-Digit Code
+                </button>
+              </div>
+
+              <!-- Pairing Code Display Card -->
+              <div id="waPairCodeResultBox" style="display: none; background: rgba(37,211,102,0.08); border: 1px dashed #25d366; border-radius: 10px; padding: 16px; text-align: center;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Your WhatsApp Pairing Code:</div>
+                <div id="waPairCodeDisplay" style="font-size: 28px; font-weight: 800; color: #25d366; letter-spacing: 6px; font-family: 'JetBrains Mono', monospace; margin-bottom: 10px;">
+                  ----
+                </div>
+                <div style="font-size: 12px; color: #fff; line-height: 1.5;">
+                  On WhatsApp mobile, tap <strong>Linked Devices &gt; Link a Device &gt; Link with phone number instead</strong> and enter this code!
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1298,6 +1349,17 @@
     const waQuickMessage = document.getElementById('waQuickMessage');
     const waQuickSendBtn = document.getElementById('waQuickSendBtn');
     const waChatList = document.getElementById('waChatList');
+    const waUnlinkedContainer = document.getElementById('waUnlinkedContainer');
+    const waTabQrBtn = document.getElementById('waTabQrBtn');
+    const waTabPhoneBtn = document.getElementById('waTabPhoneBtn');
+    const waQrSection = document.getElementById('waQrSection');
+    const waPhoneSection = document.getElementById('waPhoneSection');
+    const waRefreshQrBtn = document.getElementById('waRefreshQrBtn');
+    const waQrTimer = document.getElementById('waQrTimer');
+    const waPairPhoneInput = document.getElementById('waPairPhoneInput');
+    const waGetPairCodeBtn = document.getElementById('waGetPairCodeBtn');
+    const waPairCodeResultBox = document.getElementById('waPairCodeResultBox');
+    const waPairCodeDisplay = document.getElementById('waPairCodeDisplay');
 
     window.openWhatsAppModal = function() {
       const modal = document.getElementById('whatsappModal');
@@ -1316,6 +1378,79 @@
     if (whatsappModal) {
       whatsappModal.addEventListener('click', (e) => {
         if (e.target === whatsappModal) window.closeWhatsAppModal();
+      });
+    }
+
+    if (waTabQrBtn) {
+      waTabQrBtn.addEventListener('click', () => {
+        waTabQrBtn.style.background = 'rgba(37,211,102,0.2)';
+        waTabQrBtn.style.color = '#25d366';
+        waTabQrBtn.style.borderColor = '#25d366';
+        waTabPhoneBtn.style.background = 'rgba(255,255,255,0.05)';
+        waTabPhoneBtn.style.color = 'var(--text-muted)';
+        waTabPhoneBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+        waQrSection.style.display = 'flex';
+        waPhoneSection.style.display = 'none';
+      });
+    }
+
+    if (waTabPhoneBtn) {
+      waTabPhoneBtn.addEventListener('click', () => {
+        waTabPhoneBtn.style.background = 'rgba(37,211,102,0.2)';
+        waTabPhoneBtn.style.color = '#25d366';
+        waTabPhoneBtn.style.borderColor = '#25d366';
+        waTabQrBtn.style.background = 'rgba(255,255,255,0.05)';
+        waTabQrBtn.style.color = 'var(--text-muted)';
+        waTabQrBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+        waQrSection.style.display = 'none';
+        waPhoneSection.style.display = 'block';
+      });
+    }
+
+    if (waRefreshQrBtn) {
+      waRefreshQrBtn.addEventListener('click', async () => {
+        waRefreshQrBtn.textContent = 'Refreshing...';
+        waQrLoading.style.display = 'block';
+        waQrLoading.textContent = 'Generating Fresh QR...';
+        waQrImg.style.display = 'none';
+        try {
+          const res = await fetch('/api/whatsapp/refresh-qr', { method: 'POST' });
+          const data = await res.json();
+          if (data.qr_data_url) renderWhatsAppQR(data.qr_data_url);
+        } catch (e) {
+          console.warn('QR refresh error:', e);
+        } finally {
+          waRefreshQrBtn.innerHTML = '🔄 Refresh QR Code';
+        }
+      });
+    }
+
+    if (waGetPairCodeBtn) {
+      waGetPairCodeBtn.addEventListener('click', async () => {
+        const phone = (waPairPhoneInput.value || '').trim();
+        if (!phone) {
+          alert('Please enter your phone number with country code (e.g. 919876543210).');
+          return;
+        }
+        waGetPairCodeBtn.textContent = 'Requesting...';
+        try {
+          const res = await fetch('/api/whatsapp/pair-phone', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone }),
+          });
+          const data = await res.json();
+          if (data.success && data.code) {
+            waPairCodeResultBox.style.display = 'block';
+            waPairCodeDisplay.textContent = data.code;
+          } else {
+            alert('Failed to get code: ' + (data.error || data.detail || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Pairing request error: ' + err.message);
+        } finally {
+          waGetPairCodeBtn.textContent = 'Get 8-Digit Code';
+        }
       });
     }
 
@@ -1355,22 +1490,16 @@
         waHeaderBadge.textContent = '🟢 Connected';
         waHeaderBadge.style.color = '#25d366';
         waHeaderBadge.style.borderColor = '#25d366';
-        waQrBox.style.display = 'none';
-        waConnectedDetails.style.display = 'block';
-        waDisconnectBtn.style.display = 'inline-block';
+        if (waUnlinkedContainer) waUnlinkedContainer.style.display = 'none';
+        if (waConnectedDetails) waConnectedDetails.style.display = 'block';
         waLinkedPhone.textContent = '+' + (data.linked_phone || 'Linked');
-        waStatusTitle.textContent = '🟢 ARYA WhatsApp Active';
-        waStatusDesc.innerHTML = 'Running 24/7 on cloud server.<br>Send messages, images, and files via voice or chat anytime.';
       } else {
         waNavDot.className = 'wa-status-dot';
         waHeaderBadge.textContent = data.status === 'qr_ready' ? '🟡 Scan QR' : '🔴 Disconnected';
         waHeaderBadge.style.color = data.status === 'qr_ready' ? '#ffb300' : '#ff5252';
         waHeaderBadge.style.borderColor = data.status === 'qr_ready' ? '#ffb300' : '#ff5252';
-        waQrBox.style.display = 'flex';
-        waConnectedDetails.style.display = 'none';
-        waDisconnectBtn.style.display = 'none';
-        waStatusTitle.textContent = 'Link Your WhatsApp';
-        waStatusDesc.innerHTML = 'Scan with WhatsApp on your phone:<br><strong>1. Open WhatsApp &gt; Settings &gt; Linked Devices</strong><br><strong>2. Tap Link a Device and point at this QR</strong>';
+        if (waUnlinkedContainer) waUnlinkedContainer.style.display = 'block';
+        if (waConnectedDetails) waConnectedDetails.style.display = 'none';
       }
 
       if (data.mode) {

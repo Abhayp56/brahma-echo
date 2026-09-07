@@ -56,10 +56,10 @@ def _generate_qr_data_url(qr_raw: bytes | str) -> str:
         qr_text = str(qr_raw)
 
     qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=8,
-        border=3,
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
     )
     qr.add_data(qr_text)
     qr.make(fit=True)
@@ -101,6 +101,10 @@ class WhatsAppGateway:
         self.is_running = False
 
         self._load_config()
+
+    @property
+    def is_connected(self) -> bool:
+        return self.status == "connected"
 
     def _load_config(self):
         """Load persistent WhatsApp configuration (mode, whitelist, etc.)."""
@@ -274,7 +278,9 @@ class WhatsAppGateway:
                 logger.error(f"WhatsApp client run loop stopped: {e}")
             finally:
                 with self._lock:
-                    self.status = "disconnected"
+                    self.is_running = False
+                    if self.status != "connected":
+                        self.status = "disconnected"
                 self._broadcast("whatsapp_status", self.get_status())
 
         self.is_running = True
@@ -471,7 +477,47 @@ class WhatsAppGateway:
                 self.client.disconnect()
             except Exception:
                 pass
-        self.status = "disconnected"
-        self.qr_data_url = None
+        with self._lock:
+            self.is_running = False
+            self.status = "disconnected"
+            self.qr_data_url = None
+            self.linked_phone = None
+            self.linked_name = None
         self._broadcast("whatsapp_status", self.get_status())
         return {"success": True, "status": "disconnected"}
+
+    def restart(self):
+        """Cleanly restart WhatsApp client and generate a fresh QR code."""
+        logger.info("Restarting WhatsApp Multi-Device Gateway...")
+        if self.client:
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+        with self._lock:
+            self.client = None
+            self.is_running = False
+            self.status = "connecting"
+            self.qr_data_url = None
+        self.start()
+
+    def request_phone_pairing_code(self, phone: str) -> Dict[str, Any]:
+        """Request an 8-digit pairing code from WhatsApp for phone linking."""
+        clean = clean_phone_number(phone)
+        if not clean or len(clean) < 10:
+            return {
+                "success": False,
+                "error": "Invalid phone number. Please enter country code followed by number (e.g. 919876543210).",
+            }
+
+        if not self.is_running or not self.client:
+            self.restart()
+            time.sleep(2)
+
+        try:
+            code = self.client.PairPhone(clean, show_push_notification=True)
+            logger.info(f"⚡ WhatsApp Pairing Code generated for {clean}: {code}")
+            return {"success": True, "code": code, "phone": clean}
+        except Exception as e:
+            logger.error(f"PairPhone error: {e}")
+            return {"success": False, "error": str(e)}

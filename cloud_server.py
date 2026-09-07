@@ -189,19 +189,27 @@ def broadcast_turn_complete_to_web():
             pass
 
 
+main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
 def broadcast_whatsapp_event(event_type: str, payload: Any):
     """Broadcasts real-time WhatsApp events (status, qr, messages) to browser clients."""
+    global main_loop
     msg = json.dumps({"type": event_type, "data": payload})
     for client in list(web_clients):
         try:
-            asyncio.create_task(client.send_text(msg))
+            if main_loop and main_loop.is_running():
+                asyncio.run_coroutine_threadsafe(client.send_text(msg), main_loop)
+            else:
+                asyncio.create_task(client.send_text(msg))
         except Exception:
             pass
 
 
 @app.on_event("startup")
 async def on_startup():
-    global brain
+    global brain, main_loop
+    main_loop = asyncio.get_running_loop()
     logger.info("Initializing ARYA Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
@@ -299,10 +307,37 @@ async def get_whatsapp_status():
 
 @app.get("/api/whatsapp/qr")
 async def get_whatsapp_qr():
-    """Returns the latest WhatsApp Web pairing QR code."""
+    """Returns the latest WhatsApp Web pairing QR code, auto-restarting if disconnected."""
     from cloud.whatsapp_gateway import WhatsAppGateway
     gw = WhatsAppGateway.get_instance()
+    if (gw.status == "disconnected" or not gw.qr_data_url) and not gw.is_connected:
+        gw.restart()
+        await asyncio.sleep(1.2)
     return {"qr_data_url": gw.qr_data_url, "status": gw.status}
+
+
+@app.post("/api/whatsapp/refresh-qr")
+async def refresh_whatsapp_qr():
+    """Forces generation of a brand new pairing QR code."""
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    gw = WhatsAppGateway.get_instance()
+    gw.restart()
+    await asyncio.sleep(1.5)
+    return {"success": True, "qr_data_url": gw.qr_data_url, "status": gw.status}
+
+
+@app.post("/api/whatsapp/pair-phone")
+async def pair_whatsapp_phone(data: Dict[str, Any]):
+    """Requests an 8-character pairing code for linking via phone number."""
+    phone = data.get("phone", "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Missing 'phone' field.")
+    from cloud.whatsapp_gateway import WhatsAppGateway
+    gw = WhatsAppGateway.get_instance()
+    res = gw.request_phone_pairing_code(phone)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to generate pairing code."))
+    return res
 
 
 @app.post("/api/whatsapp/send")
