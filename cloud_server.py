@@ -284,6 +284,13 @@ async def get_web_ui():
     return HTMLResponse(content="<h1>ARYA Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
 
 
+@app.get("/health")
+@app.get("/ping")
+async def health_check():
+    """Ultra-lightweight heartbeat endpoint for UptimeRobot / uptime monitors."""
+    return {"status": "ok", "service": "Brahma Cloud Brain"}
+
+
 @app.get("/api/status")
 async def get_status():
     """System health check and connection status."""
