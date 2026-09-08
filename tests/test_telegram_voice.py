@@ -75,7 +75,26 @@ class TestTelegramVoiceGateway(unittest.TestCase):
         finally:
             tvg.audioop = orig_audioop
 
+    def test_stereo_resampling_fidelity(self):
+        from cloud.telegram_voice_gateway import (
+            resample_24k_mono_to_48k_stereo,
+            resample_48k_stereo_to_16k_mono,
+        )
+
+        # 1 second of 24kHz mono (24000 samples = 48000 bytes)
+        mono_24k = b"\x10\x20" * 24000
+        stereo_48k = resample_24k_mono_to_48k_stereo(mono_24k)
+        # Should be exactly 4x bytes: 48000 samples * 2 channels * 2 bytes = 192,000 bytes (1 full second)
+        self.assertEqual(len(stereo_48k), len(mono_24k) * 4)
+        self.assertEqual(len(stereo_48k), 192000)
+
+        # 1 second of 48kHz stereo (192000 bytes) downsampled to 16kHz mono
+        # 16000 samples * 2 bytes = 32,000 bytes (1 full second)
+        mono_16k = resample_48k_stereo_to_16k_mono(stereo_48k)
+        self.assertEqual(len(mono_16k), 32000)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

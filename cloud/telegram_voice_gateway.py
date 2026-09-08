@@ -67,6 +67,32 @@ def resample_24k_to_48k(pcm_24k: bytes) -> bytes:
     return b"".join(pcm_24k[i : i + 2] * 2 for i in range(0, len(pcm_24k) - 1, 2))
 
 
+def resample_24k_mono_to_48k_stereo(pcm_24k_mono: bytes) -> bytes:
+    """
+    Converts 24kHz 16-bit mono PCM (from Gemini Live) to 48kHz 16-bit stereo PCM (for Telegram WebRTC).
+    Each 2-byte mono sample is duplicated across time (1:2) and channels (Left=Right).
+    Ratio is exactly 4.0: 1 sample (2 bytes) -> 2 stereo samples (8 bytes).
+    Eliminates 2x playback speed ("speaking so fast") and distortion ("not clear").
+    """
+    if not pcm_24k_mono:
+        return b""
+    return b"".join(pcm_24k_mono[i : i + 2] * 4 for i in range(0, len(pcm_24k_mono) - 1, 2))
+
+
+def resample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
+    """
+    Converts 48kHz 16-bit stereo PCM (from Telegram WebRTC) to 16kHz 16-bit mono PCM (for Gemini Live).
+    Each stereo frame is 4 bytes (2B Left + 2B Right).
+    3:1 time decimation + Left channel extraction: takes 2 bytes every 12 bytes.
+    Ratio is exactly 6.0: 6 bytes stereo -> 1 byte mono (12B -> 2B).
+    """
+    if not pcm_48k_stereo:
+        return b""
+    if len(pcm_48k_stereo) % 4 == 0 and len(pcm_48k_stereo) >= 12:
+        return b"".join(pcm_48k_stereo[i : i + 2] for i in range(0, len(pcm_48k_stereo) - 1, 12))
+    return b"".join(pcm_48k_stereo[i : i + 2] for i in range(0, len(pcm_48k_stereo) - 1, 6))
+
+
 class TelegramVoiceGateway:
     """
     Singleton gateway managing the Telegram MTProto client and group voice chat.
@@ -265,8 +291,8 @@ class TelegramVoiceGateway:
             if not getattr(self.pytgcalls_app, "_is_running", False):
                 await self.pytgcalls_app.start()
 
-            # Join call and configure audio playback
-            audio_params = AudioParameters(bitrate=48000, channels=1)
+            # Join call and configure 48kHz stereo audio playback
+            audio_params = AudioParameters(bitrate=48000, channels=2)
             await self.pytgcalls_app.play(
                 self.target_group_id,
                 MediaStream(ExternalMedia.AUDIO, audio_parameters=audio_params),
@@ -361,11 +387,13 @@ class TelegramVoiceGateway:
         return {"success": True, "status": "ready", "message": "Left Telegram voice chat."}
 
     async def _audio_sender_loop(self):
-        """Pumps 48kHz PCM audio frames to Telegram voice chat every 20ms."""
+        """Pumps 48kHz stereo PCM audio frames to Telegram voice chat with precision monotonic 20ms pacing."""
         from pytgcalls.types import Device
-        frame_size = 1920  # 48000 Hz * 1 channel * 2 bytes * 0.02s
+        # 48000 Hz * 2 channels (stereo) * 2 bytes/sample * 0.02s = 3840 bytes per 20ms frame
+        frame_size = 3840
         silence_frame = b"\x00" * frame_size
         silence_sent = 0
+        next_send_time = time.monotonic()
 
         while self.status == "in_call":
             chunk = None
@@ -401,32 +429,40 @@ class TelegramVoiceGateway:
                         pass
                     silence_sent += 1
 
-            await asyncio.sleep(0.02)
+            # Precision monotonic pacing: exactly 50.0 frames/sec (prevents speech speedup or jitter)
+            next_send_time += 0.02
+            sleep_duration = next_send_time - time.monotonic()
+            if sleep_duration > 0.002:
+                await asyncio.sleep(sleep_duration)
+            elif sleep_duration < -0.1:
+                next_send_time = time.monotonic()
+                await asyncio.sleep(0.005)
+            else:
+                await asyncio.sleep(0.001)
 
     def feed_output_audio(self, pcm_24k_mono: bytes):
         """
-        Feeds Gemini Live's 24kHz 16-bit PCM audio out into Telegram's 48kHz playout buffer.
+        Feeds Gemini Live's 24kHz 16-bit mono PCM audio out into Telegram's 48kHz stereo playout buffer.
         """
         if not pcm_24k_mono:
             return
         try:
-            # Resample from 24,000 Hz to 48,000 Hz for Telegram
-            pcm_48k = resample_24k_to_48k(pcm_24k_mono)
+            pcm_48k_stereo = resample_24k_mono_to_48k_stereo(pcm_24k_mono)
             with self._audio_lock:
-                self._audio_out_buffer.extend(pcm_48k)
-                # Keep buffer under 3 seconds to avoid latency
-                max_bytes = 48000 * 2 * 3
+                self._audio_out_buffer.extend(pcm_48k_stereo)
+                # Keep buffer under 3 seconds of 48kHz stereo (48000 * 2 channels * 2 bytes * 3 = 576,000 bytes)
+                max_bytes = 48000 * 4 * 3
                 if len(self._audio_out_buffer) > max_bytes:
                     del self._audio_out_buffer[:-max_bytes]
             self._feed_count = getattr(self, "_feed_count", 0) + 1
             if self._feed_count % 50 == 1:
-                logger.info(f"Buffered Gemini audio for Telegram ({len(pcm_24k_mono)}B -> {len(self._audio_out_buffer)}B in buffer)")
+                logger.info(f"Buffered Gemini audio for Telegram ({len(pcm_24k_mono)}B -> {len(self._audio_out_buffer)}B stereo buffer)")
         except Exception as err:
             logger.error(f"Error buffering Gemini audio for Telegram: {err}")
 
     def _on_played_data(self, group_call: Any, length: int) -> bytes:
         """
-        Callback from tgcalls requesting `length` bytes of raw 48kHz audio to broadcast into Telegram.
+        Callback from tgcalls requesting `length` bytes of raw audio to broadcast into Telegram.
         """
         with self._audio_lock:
             if len(self._audio_out_buffer) >= length:
@@ -442,13 +478,13 @@ class TelegramVoiceGateway:
 
     def _on_recorded_data(self, group_call: Any, frame: bytes, length: int):
         """
-        Callback from tgcalls with `length` bytes of raw 48kHz audio from the user's mic.
+        Callback from tgcalls with raw 48kHz stereo audio from the user's mic.
+        Downsamples to 16kHz mono and forwards to Gemini Live.
         """
         if not frame or not self.cloud_brain:
             return
         try:
-            # Downsample 48,000 Hz to 16,000 Hz for Gemini Live input
-            pcm_16k = resample_48k_to_16k(frame)
+            pcm_16k = resample_48k_stereo_to_16k_mono(frame)
             if self.cloud_brain.session and self.cloud_brain._loop:
                 asyncio.run_coroutine_threadsafe(
                     self.cloud_brain.send_audio(pcm_16k),
