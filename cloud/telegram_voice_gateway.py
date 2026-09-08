@@ -67,16 +67,39 @@ def resample_24k_to_48k(pcm_24k: bytes) -> bytes:
     return b"".join(pcm_24k[i : i + 2] * 2 for i in range(0, len(pcm_24k) - 1, 2))
 
 
-def resample_24k_mono_to_48k_stereo(pcm_24k_mono: bytes) -> bytes:
+def resample_24k_mono_to_48k_stereo(pcm_24k_mono: bytes, gain: float = 1.3) -> bytes:
     """
     Converts 24kHz 16-bit mono PCM (from Gemini Live) to 48kHz 16-bit stereo PCM (for Telegram WebRTC).
-    Each 2-byte mono sample is duplicated across time (1:2) and channels (Left=Right).
-    Ratio is exactly 4.0: 1 sample (2 bytes) -> 2 stereo samples (8 bytes).
+    Performs smooth linear interpolation upsampling to eliminate jagged step artifacts and robotic buzz,
+    applies a +30% volume boost for crystal-clear audibility, and duplicates across Left & Right channels.
+    Ratio is exactly 4.0: 1 mono sample (2 bytes) -> 2 stereo samples (8 bytes).
     Eliminates 2x playback speed ("speaking so fast") and distortion ("not clear").
     """
     if not pcm_24k_mono:
         return b""
-    return b"".join(pcm_24k_mono[i : i + 2] * 4 for i in range(0, len(pcm_24k_mono) - 1, 2))
+
+    # Apply volume boost for clear audibility in Telegram voice room
+    boosted = pcm_24k_mono
+    if gain != 1.0 and audioop is not None:
+        try:
+            boosted = audioop.mul(pcm_24k_mono, 2, gain)
+        except Exception:
+            pass
+
+    count = len(boosted) // 2
+    if count == 0:
+        return b""
+    import struct
+    samples = struct.unpack(f"<{count}h", boosted[: count * 2])
+    out = []
+    for j in range(count - 1):
+        s1 = samples[j]
+        s2 = samples[j + 1]
+        mid = (s1 + s2) // 2
+        out.extend([s1, s1, mid, mid])
+    last = samples[-1]
+    out.extend([last, last, last, last])
+    return struct.pack(f"<{len(out)}h", *out)
 
 
 def resample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
@@ -91,6 +114,24 @@ def resample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
     if len(pcm_48k_stereo) % 4 == 0 and len(pcm_48k_stereo) >= 12:
         return b"".join(pcm_48k_stereo[i : i + 2] for i in range(0, len(pcm_48k_stereo) - 1, 12))
     return b"".join(pcm_48k_stereo[i : i + 2] for i in range(0, len(pcm_48k_stereo) - 1, 6))
+
+
+def calculate_rms(pcm_data: bytes) -> int:
+    """Calculates RMS volume for 16-bit PCM audio (with or without audioop)."""
+    if not pcm_data:
+        return 0
+    if audioop is not None:
+        try:
+            return audioop.rms(pcm_data, 2)
+        except Exception:
+            pass
+    import struct, math
+    count = len(pcm_data) // 2
+    if count == 0:
+        return 0
+    samples = struct.unpack(f"<{count}h", pcm_data[: count * 2])
+    sum_squares = sum(s * s for s in samples)
+    return int(math.sqrt(sum_squares / count))
 
 
 class TelegramVoiceGateway:
@@ -122,6 +163,8 @@ class TelegramVoiceGateway:
 
         self._audio_out_buffer: bytearray = bytearray()
         self._audio_lock = threading.Lock()
+        self._mic_in_buffer: bytearray = bytearray()
+        self._mic_lock = threading.Lock()
         self._event_listeners: List[Callable[[str, Any], None]] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
@@ -307,9 +350,28 @@ class TelegramVoiceGateway:
             except Exception as rec_err:
                 logger.debug(f"RecordStream notice: {rec_err}")
 
+            # Explicitly unmute ARYA and set clear transmission volume with retries
+            async def _ensure_unmuted():
+                for delay in [0.2, 1.0, 3.0]:
+                    await asyncio.sleep(delay)
+                    if self.status == "in_call" and self.pytgcalls_app:
+                        try:
+                            await self.pytgcalls_app.unmute(self.target_group_id)
+                            logger.info(f"Unmuted ARYA in Telegram voice room (delay={delay}s).")
+                        except Exception as un_err:
+                            logger.debug(f"Unmute note: {un_err}")
+                        try:
+                            await self.pytgcalls_app.change_volume_call(self.target_group_id, 200)
+                        except Exception:
+                            pass
+
+            asyncio.create_task(_ensure_unmuted())
+
             self.status = "in_call"
             with self._audio_lock:
                 self._audio_out_buffer.clear()
+            with self._mic_lock:
+                self._mic_in_buffer.clear()
 
             # Start background sender loop for Gemini audio frames
             if self._audio_sender_task and not self._audio_sender_task.done():
@@ -318,7 +380,7 @@ class TelegramVoiceGateway:
 
             self._broadcast("telegram_status", self.get_status())
 
-            # Send brief confirmation in group
+            # Send brief confirmation in group chat
             try:
                 await self.client.send_message(
                     group_entity,
@@ -326,6 +388,18 @@ class TelegramVoiceGateway:
                 )
             except Exception:
                 pass
+
+            # Immediate spoken greeting so user hears ARYA's voice loud and clear upon joining
+            if self.cloud_brain:
+                async def _spoken_greeting():
+                    await asyncio.sleep(1.2)
+                    try:
+                        await self.cloud_brain.handle_text_command(
+                            "Hello boss! I'm active in the voice room. How can I help you today?"
+                        )
+                    except Exception as ge:
+                        logger.debug(f"Greeting error: {ge}")
+                asyncio.create_task(_spoken_greeting())
 
             return {
                 "success": True,
@@ -381,6 +455,8 @@ class TelegramVoiceGateway:
         self.status = "ready"
         with self._audio_lock:
             self._audio_out_buffer.clear()
+        with self._mic_lock:
+            self._mic_in_buffer.clear()
 
         self._broadcast("telegram_status", self.get_status())
         logger.info("Left Telegram group voice chat.")
@@ -392,8 +468,8 @@ class TelegramVoiceGateway:
         # 48000 Hz * 2 channels (stereo) * 2 bytes/sample * 0.02s = 3840 bytes per 20ms frame
         frame_size = 3840
         silence_frame = b"\x00" * frame_size
-        silence_sent = 0
         next_send_time = time.monotonic()
+        last_error_time = 0.0
 
         while self.status == "in_call":
             chunk = None
@@ -405,40 +481,39 @@ class TelegramVoiceGateway:
                     chunk = bytes(self._audio_out_buffer).ljust(frame_size, b"\x00")
                     self._audio_out_buffer.clear()
 
-            if chunk:
-                silence_sent = 0
-                try:
-                    if self.pytgcalls_app:
-                        await self.pytgcalls_app.send_frame(
-                            self.target_group_id,
-                            Device.MICROPHONE,
-                            chunk,
-                        )
-                except Exception as e:
-                    logger.debug(f"send_frame error: {e}")
-            else:
-                if silence_sent < 15:  # ~300ms trailing comfort silence
-                    try:
-                        if self.pytgcalls_app:
-                            await self.pytgcalls_app.send_frame(
-                                self.target_group_id,
-                                Device.MICROPHONE,
-                                silence_frame,
-                            )
-                    except Exception:
-                        pass
-                    silence_sent += 1
+            # Continuous warm RTP streaming: keeps WebRTC pipeline active so there is 0 start latency
+            frame_to_send = chunk if chunk else silence_frame
+            try:
+                if self.pytgcalls_app:
+                    await self.pytgcalls_app.send_frame(
+                        self.target_group_id,
+                        Device.MICROPHONE,
+                        frame_to_send,
+                    )
+            except Exception as e:
+                now_t = time.monotonic()
+                if now_t - last_error_time > 5.0:
+                    logger.warning(f"Telegram send_frame warning: {e}")
+                    last_error_time = now_t
 
             # Precision monotonic pacing: exactly 50.0 frames/sec (prevents speech speedup or jitter)
             next_send_time += 0.02
-            sleep_duration = next_send_time - time.monotonic()
+            now = time.monotonic()
+            sleep_duration = next_send_time - now
             if sleep_duration > 0.002:
                 await asyncio.sleep(sleep_duration)
-            elif sleep_duration < -0.1:
-                next_send_time = time.monotonic()
-                await asyncio.sleep(0.005)
+            elif (now - next_send_time) > 0.08:
+                # If we fell behind by more than 4 frames (>80ms), re-align time anchor
+                next_send_time = now
             else:
                 await asyncio.sleep(0.001)
+
+    def clear_output_buffer(self) -> int:
+        """Flushes all queued outgoing audio from Telegram playout buffer for instant barge-in."""
+        with self._audio_lock:
+            cleared = len(self._audio_out_buffer)
+            self._audio_out_buffer.clear()
+            return cleared
 
     def feed_output_audio(self, pcm_24k_mono: bytes):
         """
@@ -450,8 +525,8 @@ class TelegramVoiceGateway:
             pcm_48k_stereo = resample_24k_mono_to_48k_stereo(pcm_24k_mono)
             with self._audio_lock:
                 self._audio_out_buffer.extend(pcm_48k_stereo)
-                # Keep buffer under 3 seconds of 48kHz stereo (48000 * 2 channels * 2 bytes * 3 = 576,000 bytes)
-                max_bytes = 48000 * 4 * 3
+                # Keep buffer up to 30 seconds of 48kHz stereo (5,760,000 bytes) so sentences are never truncated
+                max_bytes = 48000 * 4 * 30
                 if len(self._audio_out_buffer) > max_bytes:
                     del self._audio_out_buffer[:-max_bytes]
             self._feed_count = getattr(self, "_feed_count", 0) + 1
@@ -478,21 +553,70 @@ class TelegramVoiceGateway:
 
     def _on_recorded_data(self, group_call: Any, frame: bytes, length: int):
         """
-        Callback from tgcalls with raw 48kHz stereo audio from the user's mic.
-        Downsamples to 16kHz mono and forwards to Gemini Live.
+        Callback from tgcalls with raw 48kHz stereo audio from user's mic in Telegram voice chat.
+        Downsamples to 16kHz mono, batches into 50ms packets, applies adaptive speech detection
+        with 350ms hangover holdoff, gates room noise into pure digital silence for instant Gemini
+        Live turn completion (<300ms), and flushes stale playback buffer on user barge-in.
         """
         if not frame or not self.cloud_brain:
             return
         try:
             pcm_16k = resample_48k_stereo_to_16k_mono(frame)
+            if not pcm_16k:
+                return
+
+            payload_to_send = None
+            with self._mic_lock:
+                self._mic_in_buffer.extend(pcm_16k)
+                # 50ms frame at 16kHz mono 16-bit = 16000 * 2 * 0.05 = 1600 bytes
+                if len(self._mic_in_buffer) >= 1600:
+                    payload_to_send = bytes(self._mic_in_buffer[:1600])
+                    del self._mic_in_buffer[:1600]
+
+            if not payload_to_send:
+                return
+
+            rms = calculate_rms(payload_to_send)
+
+            # Adaptive noise floor and speech detection
+            if not hasattr(self, "_noise_floor"):
+                self._noise_floor = 60.0
+                self._speech_hangover_frames = 0
+                self._is_user_speaking = False
+
+            # Track background noise floor slowly when signal is quiet
+            if rms < self._noise_floor * 1.5:
+                self._noise_floor = 0.95 * self._noise_floor + 0.05 * rms
+
+            speech_threshold = max(90, int(self._noise_floor + 35))
+
+            if rms > speech_threshold:
+                # 7 frames of 50ms = 350ms hangover to protect natural sentence endings
+                self._speech_hangover_frames = 7
+                if not self._is_user_speaking:
+                    self._is_user_speaking = True
+                    cleared = self.clear_output_buffer()
+                    logger.info(f"⚡ User speaking (RMS={rms}, thresh={speech_threshold}) | Flushed {cleared}B stale audio.")
+                gated_audio = payload_to_send
+            elif self._speech_hangover_frames > 0:
+                self._speech_hangover_frames -= 1
+                # Forward speech hangover untouched
+                gated_audio = payload_to_send
+            else:
+                if self._is_user_speaking:
+                    self._is_user_speaking = False
+                    logger.info("Silence detected: forwarding clean digital silence for instant Gemini Live turn detection.")
+                # Send pure digital zeros so Gemini Live detects end-of-turn in <250ms
+                gated_audio = b"\x00" * len(payload_to_send)
+
             if self.cloud_brain.session and self.cloud_brain._loop:
                 asyncio.run_coroutine_threadsafe(
-                    self.cloud_brain.send_audio(pcm_16k),
+                    self.cloud_brain.send_audio(gated_audio),
                     self.cloud_brain._loop,
                 )
                 self._rec_count = getattr(self, "_rec_count", 0) + 1
-                if self._rec_count % 50 == 1:
-                    logger.info(f"Forwarded mic audio chunk ({len(pcm_16k)} bytes) to Gemini Live.")
+                if self._rec_count % 40 == 1:
+                    logger.info(f"Forwarded mic audio chunk ({len(gated_audio)}B, rms={rms}, speaking={self._is_user_speaking}) to Gemini Live.")
         except Exception as e:
             logger.debug(f"Audio forward error: {e}")
 

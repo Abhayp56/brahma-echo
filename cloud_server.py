@@ -230,6 +230,15 @@ def handle_audio_out(chunk: bytes):
         pass
 
 
+def handle_interrupted():
+    """Handles user barge-in interruption to immediately stop playback and clear audio buffers."""
+    try:
+        from cloud.telegram_voice_gateway import TelegramVoiceGateway
+        TelegramVoiceGateway.get_instance().clear_output_buffer()
+    except Exception:
+        pass
+
+
 @app.on_event("startup")
 async def on_startup():
     global brain, main_loop
@@ -240,6 +249,7 @@ async def on_startup():
         on_audio_out=handle_audio_out,
         on_transcript=broadcast_transcript_to_web,
         on_turn_complete=broadcast_turn_complete_to_web,
+        on_interrupted=handle_interrupted,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
     )
     # Start Gemini Live background loop

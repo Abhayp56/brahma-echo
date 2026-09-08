@@ -93,6 +93,25 @@ class TestTelegramVoiceGateway(unittest.TestCase):
         mono_16k = resample_48k_stereo_to_16k_mono(stereo_48k)
         self.assertEqual(len(mono_16k), 32000)
 
+    def test_clear_output_buffer(self):
+        gw = TelegramVoiceGateway.get_instance()
+        gw.feed_output_audio(b"\x10\x00" * 480)
+        with gw._audio_lock:
+            self.assertGreater(len(gw._audio_out_buffer), 0)
+        cleared = gw.clear_output_buffer()
+        self.assertGreater(cleared, 0)
+        with gw._audio_lock:
+            self.assertEqual(len(gw._audio_out_buffer), 0)
+
+    def test_calculate_rms(self):
+        from cloud.telegram_voice_gateway import calculate_rms
+        silence = b"\x00" * 1600
+        self.assertEqual(calculate_rms(silence), 0)
+
+        # High amplitude signal
+        signal = b"\x00\x40" * 800
+        self.assertGreater(calculate_rms(signal), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,12 +112,14 @@ class CloudBrain:
         on_audio_out: Optional[Callable[[bytes], None]] = None,
         on_transcript: Optional[Callable[[str, str], None]] = None,
         on_turn_complete: Optional[Callable[[], None]] = None,
+        on_interrupted: Optional[Callable[[], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
     ):
         self.dispatcher = tool_dispatcher
         self.on_audio_out = on_audio_out
         self.on_transcript = on_transcript
         self.on_turn_complete = on_turn_complete
+        self.on_interrupted = on_interrupted
         self.on_log = on_log or (lambda msg: logger.info(f"[BrainLog] {msg}"))
 
         self.session = None
@@ -160,6 +162,11 @@ class CloudBrain:
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
             "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
+            "VOICE PACING & CLARITY INSTRUCTIONS:\n"
+            "- Speak with a natural, calm, confident, and measured conversational cadence (1.0x human speaking speed).\n"
+            "- Never speak too fast, rush syllables, or slur words together.\n"
+            "- Articulate every word crisply with warmth and effortless poise, like F.R.I.D.A.Y.\n"
+            "- Keep spoken answers concise, direct, and conversational (typically 1 to 3 sentences) so the conversation flows seamlessly without long monologues."
         )
 
         return types.LiveConnectConfig(
@@ -469,9 +476,18 @@ class CloudBrain:
                                 if self.on_audio_out:
                                     self.on_audio_out(response.data)
 
-                            # Handle transcriptions
+                            # Handle transcriptions and barge-in
                             if response.server_content:
                                 sc = response.server_content
+                                if getattr(sc, "interrupted", False):
+                                    self.log("⚡ User interrupted ARYA; cancelling playback.")
+                                    out_buf = []
+                                    if self.on_interrupted:
+                                        try:
+                                            self.on_interrupted()
+                                        except Exception:
+                                            pass
+
                                 if sc.output_transcription and sc.output_transcription.text:
                                     txt = sc.output_transcription.text.strip()
                                     if txt:
