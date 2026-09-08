@@ -9,7 +9,6 @@ from the call into Gemini Live and streams Gemini Live's real-time voice back.
 from __future__ import annotations
 
 import asyncio
-import audioop
 import json
 import logging
 import os
@@ -20,10 +19,52 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+try:
+    import audioop
+except ModuleNotFoundError:
+    try:
+        import audioop_lts as audioop  # Fallback for Python 3.13+
+    except ModuleNotFoundError:
+        audioop = None
+
 logger = logging.getLogger("TelegramVoiceGateway")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / "config" / "telegram_config.json"
+
+
+def resample_48k_to_16k(pcm_48k: bytes) -> bytes:
+    """
+    Downsamples 48kHz 16-bit mono PCM to 16kHz 16-bit mono PCM (3:1 decimation).
+    Works on Python 3.8 through 3.14+ with or without the audioop C extension.
+    """
+    if not pcm_48k:
+        return b""
+    if audioop is not None:
+        try:
+            pcm_16k, _ = audioop.ratecv(pcm_48k, 2, 1, 48000, 16000, None)
+            return pcm_16k
+        except Exception:
+            pass
+    # Pure Python exact 3:1 decimation: each sample is 2 bytes; keep 2 bytes out of every 6
+    return b"".join(pcm_48k[i : i + 2] for i in range(0, len(pcm_48k) - 1, 6))
+
+
+def resample_24k_to_48k(pcm_24k: bytes) -> bytes:
+    """
+    Upsamples 24kHz 16-bit mono PCM to 48kHz 16-bit mono PCM (1:2 repetition).
+    Works on Python 3.8 through 3.14+ with or without the audioop C extension.
+    """
+    if not pcm_24k:
+        return b""
+    if audioop is not None:
+        try:
+            pcm_48k, _ = audioop.ratecv(pcm_24k, 2, 1, 24000, 48000, None)
+            return pcm_48k
+        except Exception:
+            pass
+    # Pure Python exact 1:2 duplication: duplicate each 2-byte sample
+    return b"".join(pcm_24k[i : i + 2] * 2 for i in range(0, len(pcm_24k) - 1, 2))
 
 
 class TelegramVoiceGateway:
@@ -269,7 +310,7 @@ class TelegramVoiceGateway:
             return
         try:
             # Resample from 24,000 Hz to 48,000 Hz for Telegram
-            pcm_48k, _ = audioop.ratecv(pcm_24k_mono, 2, 1, 24000, 48000, None)
+            pcm_48k = resample_24k_to_48k(pcm_24k_mono)
             with self._audio_lock:
                 self._audio_out_buffer.extend(pcm_48k)
                 # Keep buffer under 3 seconds to avoid latency
@@ -303,7 +344,7 @@ class TelegramVoiceGateway:
             return
         try:
             # Downsample 48,000 Hz to 16,000 Hz for Gemini Live input
-            pcm_16k, _ = audioop.ratecv(frame, 2, 1, 48000, 16000, None)
+            pcm_16k = resample_48k_to_16k(frame)
             if self.cloud_brain.session and self.cloud_brain._loop:
                 asyncio.run_coroutine_threadsafe(
                     self.cloud_brain.send_audio(pcm_16k),

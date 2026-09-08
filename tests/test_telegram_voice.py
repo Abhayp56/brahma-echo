@@ -52,6 +52,30 @@ class TestTelegramVoiceGateway(unittest.TestCase):
             # Clear buffer after test
             gw._audio_out_buffer.clear()
 
+    def test_pure_python_resampling(self):
+        from cloud.telegram_voice_gateway import resample_24k_to_48k, resample_48k_to_16k
+        import cloud.telegram_voice_gateway as tvg
+
+        sample_24k = b"\x01\x00" * 240  # 480 bytes
+        res_48k = resample_24k_to_48k(sample_24k)
+        self.assertGreater(len(res_48k), 400)
+
+        sample_48k = b"\x01\x00" * 480  # 960 bytes
+        res_16k = resample_48k_to_16k(sample_48k)
+        self.assertGreater(len(res_16k), 100)
+
+        # Test pure python branch by mocking audioop as None
+        orig_audioop = tvg.audioop
+        try:
+            tvg.audioop = None
+            pure_48k = resample_24k_to_48k(sample_24k)
+            self.assertEqual(len(pure_48k), len(sample_24k) * 2)
+            pure_16k = resample_48k_to_16k(sample_48k)
+            self.assertEqual(len(pure_16k), len(sample_48k) // 3)
+        finally:
+            tvg.audioop = orig_audioop
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -431,22 +431,34 @@ async def disconnect_whatsapp():
 @app.get("/api/telegram/status")
 async def get_telegram_status():
     """Returns the current connection and call status of the Telegram Voice Gateway."""
-    from cloud.telegram_voice_gateway import TelegramVoiceGateway
-    return TelegramVoiceGateway.get_instance().get_status()
+    try:
+        from cloud.telegram_voice_gateway import TelegramVoiceGateway
+        return TelegramVoiceGateway.get_instance().get_status()
+    except Exception as exc:
+        logger.error(f"Error getting Telegram status: {exc}")
+        return {"status": "error", "error": str(exc), "is_configured": False, "in_call": False}
 
 
 @app.post("/api/telegram/start-call")
 async def start_telegram_call():
     """Starts or joins the group voice call in the private Arya group."""
-    from cloud.telegram_voice_gateway import TelegramVoiceGateway
-    return await TelegramVoiceGateway.get_instance().start_call()
+    try:
+        from cloud.telegram_voice_gateway import TelegramVoiceGateway
+        return await TelegramVoiceGateway.get_instance().start_call()
+    except Exception as exc:
+        logger.error(f"Error starting Telegram call: {exc}")
+        return {"success": False, "error": str(exc)}
 
 
 @app.post("/api/telegram/leave-call")
 async def leave_telegram_call():
     """Leaves the active Telegram group voice call."""
-    from cloud.telegram_voice_gateway import TelegramVoiceGateway
-    return await TelegramVoiceGateway.get_instance().leave_call()
+    try:
+        from cloud.telegram_voice_gateway import TelegramVoiceGateway
+        return await TelegramVoiceGateway.get_instance().leave_call()
+    except Exception as exc:
+        logger.error(f"Error leaving Telegram call: {exc}")
+        return {"success": False, "error": str(exc)}
 
 
 @app.websocket("/ws/web")
