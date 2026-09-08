@@ -255,13 +255,12 @@ class TelegramVoiceGateway:
                 # Add real-time audio input callback
                 async def _on_stream_update(client, update):
                     try:
-                        if isinstance(update, StreamFrames):
-                            if update.direction == Direction.INCOMING and update.device == Device.MICROPHONE:
-                                for frame in update.frames:
-                                    if frame.frame:
-                                        self._on_recorded_data(None, frame.frame, len(frame.frame))
+                        if isinstance(update, StreamFrames) and update.direction == Direction.INCOMING:
+                            for frame in update.frames:
+                                if frame.frame:
+                                    self._on_recorded_data(None, frame.frame, len(frame.frame))
                     except Exception as frame_err:
-                        logger.debug(f"Audio frame receive error: {frame_err}")
+                        logger.warning(f"Audio frame receive error: {frame_err}")
 
                 self.pytgcalls_app.add_handler(_on_stream_update)
 
@@ -300,6 +299,18 @@ class TelegramVoiceGateway:
             self.status = "in_call"
             self._broadcast("telegram_status", self.get_status())
 
+            # Trigger immediate verbal greeting from ARYA out loud in the voice call
+            if self.cloud_brain and self.cloud_brain.session:
+                target_loop = self.cloud_brain._loop or self._loop
+                if target_loop and target_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        self.cloud_brain.handle_text_command(
+                            "You are now live in the private Telegram voice call with Boss. Greet Boss out loud immediately with your signature sharp, witty style like: 'Hey Boss, I'm live on Telegram. What's on your mind?'"
+                        ),
+                        target_loop,
+                    )
+                    logger.info("Triggered initial Telegram voice call verbal greeting from ARYA.")
+
             # Send brief confirmation in group
             try:
                 await self.client.send_message(
@@ -326,6 +337,7 @@ class TelegramVoiceGateway:
         logger.info("Starting Telegram audio playout pacer loop.")
         try:
             from pytgcalls.types import Device
+            sent_count = 0
             while self.status == "in_call":
                 chunk = None
                 with self._audio_lock:
@@ -335,8 +347,11 @@ class TelegramVoiceGateway:
                 if chunk and self.pytgcalls_app:
                     try:
                         await self.pytgcalls_app.send_frame(self.target_group_id, Device.MICROPHONE, chunk)
+                        sent_count += 1
+                        if sent_count % 100 == 1:
+                            logger.info(f"Streamed audio frames to Telegram voice room (packet #{sent_count}).")
                     except Exception as e:
-                        logger.debug(f"send_frame error: {e}")
+                        logger.warning(f"send_frame error: {e}")
                 await asyncio.sleep(0.02)
         except asyncio.CancelledError:
             pass
@@ -403,6 +418,9 @@ class TelegramVoiceGateway:
                 max_bytes = 48000 * 2 * 3
                 if len(self._audio_out_buffer) > max_bytes:
                     del self._audio_out_buffer[:-max_bytes]
+            self._feed_count = getattr(self, "_feed_count", 0) + 1
+            if self._feed_count % 50 == 1:
+                logger.info(f"Received Gemini audio chunk ({len(pcm_24k_mono)} bytes) -> Telegram buffer: {len(self._audio_out_buffer)} bytes")
         except Exception as err:
             logger.error(f"Error buffering Gemini audio for Telegram: {err}")
 
@@ -431,13 +449,18 @@ class TelegramVoiceGateway:
         try:
             # Downsample 48,000 Hz to 16,000 Hz for Gemini Live input
             pcm_16k = resample_48k_to_16k(frame)
-            if self.cloud_brain.session and self.cloud_brain._loop:
-                asyncio.run_coroutine_threadsafe(
-                    self.cloud_brain.send_audio(pcm_16k),
-                    self.cloud_brain._loop,
-                )
+            if self.cloud_brain and self.cloud_brain.session:
+                target_loop = self.cloud_brain._loop or self._loop
+                if target_loop and target_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        self.cloud_brain.handle_incoming_audio(pcm_16k),
+                        target_loop,
+                    )
+                    self._rec_count = getattr(self, "_rec_count", 0) + 1
+                    if self._rec_count % 100 == 1:
+                        logger.info(f"Forwarded mic audio chunk ({len(pcm_16k)} bytes) to Gemini Live.")
         except Exception as e:
-            logger.debug(f"Audio forward error: {e}")
+            logger.warning(f"Audio forward error: {e}")
 
     def get_status(self) -> Dict[str, Any]:
         """Returns structured gateway status."""
