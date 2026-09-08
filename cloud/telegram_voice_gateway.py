@@ -145,9 +145,24 @@ class TelegramVoiceGateway:
         """Attaches the CloudBrain instance for bidirectional live audio."""
         self.cloud_brain = brain
 
-    def start(self):
-        """Starts background network client thread."""
+    def start(self, loop: Optional[asyncio.AbstractEventLoop] = None):
+        """Starts background network client on the provided loop or a dedicated runner thread."""
         if self.is_running or not self.is_configured:
+            return
+
+        # If a running event loop is provided or available in current thread, use it directly
+        running_loop = loop
+        if running_loop is None:
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+        if running_loop is not None:
+            self._loop = running_loop
+            self.is_running = True
+            self._loop.create_task(self._init_client_async())
+            logger.info("Telegram Voice Gateway initialized on existing asyncio event loop.")
             return
 
         def _runner():
@@ -182,8 +197,20 @@ class TelegramVoiceGateway:
             self._broadcast("telegram_status", self.get_status())
 
     async def start_call(self) -> Dict[str, Any]:
+        """Dispatches start_call to the event loop where the Telegram client was created."""
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+
+        if self._loop and curr_loop != self._loop:
+            future = asyncio.run_coroutine_threadsafe(self._do_start_call(), self._loop)
+            return await asyncio.wrap_future(future)
+        return await self._do_start_call()
+
+    async def _do_start_call(self) -> Dict[str, Any]:
         """
-        Starts or joins the group voice chat in the Arya group.
+        Starts or joins the group voice chat in the Arya group on self._loop.
         """
         if not self.is_configured:
             return {"success": False, "error": "Telegram client not configured. Run login_telegram.py first."}
@@ -319,7 +346,19 @@ class TelegramVoiceGateway:
             logger.info("Stopped Telegram audio playout pacer loop.")
 
     async def leave_call(self) -> Dict[str, Any]:
-        """Leaves the active voice chat."""
+        """Dispatches leave_call to the event loop where the Telegram client was created."""
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+
+        if self._loop and curr_loop != self._loop:
+            future = asyncio.run_coroutine_threadsafe(self._do_leave_call(), self._loop)
+            return await asyncio.wrap_future(future)
+        return await self._do_leave_call()
+
+    async def _do_leave_call(self) -> Dict[str, Any]:
+        """Leaves the active voice chat on self._loop."""
         if self.status != "in_call":
             return {"success": True, "status": "idle", "message": "Not in call."}
 
