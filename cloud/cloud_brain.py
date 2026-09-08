@@ -369,6 +369,22 @@ class CloudBrain:
                 res = gateway.send_text(recipient, message)
                 return types.FunctionResponse(id=call_id, name=name, response=res)
 
+        # 1.6 Telegram Private Voice Call Gateway
+        if name == "telegram_call":
+            action = args.get("action", "start_call")
+            from cloud.telegram_voice_gateway import TelegramVoiceGateway
+            tg_gateway = TelegramVoiceGateway.get_instance()
+
+            if action == "start_call":
+                res = await tg_gateway.start_call()
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+            elif action == "end_call":
+                res = await tg_gateway.leave_call()
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+            else:  # check_status
+                res = tg_gateway.get_status()
+                return types.FunctionResponse(id=call_id, name=name, response=res)
+
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."

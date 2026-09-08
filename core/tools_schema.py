@@ -268,6 +268,23 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "telegram_call",
+        "description": (
+            "Initiates, joins, or leaves a live Telegram voice call with Abhay in his private Arya Telegram group. "
+            "Use when Abhay asks to 'call me on Telegram', 'start Telegram voice chat', 'hop on a Telegram call', or 'end Telegram call'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "start_call | end_call | check_status"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
         "name": "reminder",
         "description": "Sets a timed reminder using Windows Task Scheduler.",
         "parameters": {
