@@ -260,7 +260,7 @@ async def on_startup():
         tg_voice = TelegramVoiceGateway.get_instance()
         tg_voice.set_cloud_brain(brain)
         tg_voice.add_listener(broadcast_telegram_event)
-        tg_voice.start(loop=main_loop)
+        tg_voice.start()
     except Exception as tg_err:
         logger.warning(f"Could not start Telegram Voice Gateway: {tg_err}")
 

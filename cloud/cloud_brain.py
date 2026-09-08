@@ -177,20 +177,20 @@ class CloudBrain:
         )
 
     async def handle_incoming_audio(self, pcm_chunk: bytes):
-        """Feed incoming audio from laptop, Telegram, or user mic into Gemini Live."""
-        if not self.session or not pcm_chunk:
+        """Feed incoming audio from laptop or user mic into Gemini Live."""
+        if not self.session:
             return
         try:
-            from google.genai import types
             await self.session.send_realtime_input(
-                media=types.Blob(data=pcm_chunk, mime_type="audio/pcm;rate=16000")
+                media={"data": pcm_chunk, "mime_type": "audio/pcm"}
             )
         except Exception as e:
             logger.error(f"Failed to forward realtime audio: {e}")
 
     async def send_audio(self, pcm_chunk: bytes):
-        """Alias for handle_incoming_audio to support voice gateway audio streaming."""
+        """Forward real-time audio from Telegram or other gateways into Gemini Live."""
         await self.handle_incoming_audio(pcm_chunk)
+
 
     async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
