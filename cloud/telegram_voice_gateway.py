@@ -161,8 +161,9 @@ class TelegramVoiceGateway:
 
             # Check if group call is active, or start it
             try:
+                import telethon.tl.functions.channels as channel_funcs
                 full_chat = await self.client(
-                    telethon.tl.functions.channels.GetFullChannelRequest(channel=group_entity)
+                    channel_funcs.GetFullChannelRequest(channel=group_entity)
                 ) if hasattr(group_entity, "broadcast") or getattr(group_entity, "megagroup", False) else None
             except Exception:
                 full_chat = None
@@ -179,19 +180,35 @@ class TelegramVoiceGateway:
                 )
                 logger.info("Created new Telegram group voice chat room.")
             except Exception as e:
-                # Often returns GROUPCALL_ALREADY_DISCARDED or already active error; continue
-                logger.info(f"Group call creation status: {e} (continuing to join)")
+                # Group call may already be active; continue
+                logger.info(f"Group call check/creation: {e}")
 
-            # Initialize pytgcalls raw audio stream
-            if not self.group_call:
-                self.pytgcalls_factory = GroupCallFactory(self.client, MTProtoClientType.TELETHON)
-                self.group_call = self.pytgcalls_factory.get_raw_group_call(
-                    on_played_data=self._on_played_data,
-                    on_recorded_data=self._on_recorded_data,
-                )
+            # Join voice chat using PyTgCalls
+            joined = False
+            try:
+                from pytgcalls import PyTgCalls
+                self.pytgcalls_app = PyTgCalls(self.client)
+                await self.pytgcalls_app.start()
+                await self.pytgcalls_app.play(self.target_group_id)
+                joined = True
+                logger.info("Joined Telegram group call via PyTgCalls client.")
+            except Exception as e1:
+                logger.info(f"PyTgCalls standard start fallback: {e1}")
 
-            logger.info("Joining Telegram group voice chat with raw audio pipeline...")
-            await self.group_call.start(self.target_group_id)
+            if not joined:
+                try:
+                    from pytgcalls import GroupCallFactory
+                    from pytgcalls.group_call_factory import MTProtoClientType
+                    self.pytgcalls_factory = GroupCallFactory(self.client, MTProtoClientType.TELETHON)
+                    self.group_call = self.pytgcalls_factory.get_raw_group_call(
+                        on_played_data=self._on_played_data,
+                        on_recorded_data=self._on_recorded_data,
+                    )
+                    await self.group_call.start(self.target_group_id)
+                    joined = True
+                    logger.info("Joined Telegram group call via GroupCallFactory.")
+                except Exception as e2:
+                    logger.error(f"GroupCallFactory fallback also failed: {e2}")
 
             self.status = "in_call"
             self._broadcast("telegram_status", self.get_status())
@@ -219,11 +236,21 @@ class TelegramVoiceGateway:
 
     async def leave_call(self) -> Dict[str, Any]:
         """Leaves the active voice chat."""
-        if not self.group_call or self.status != "in_call":
+        if self.status != "in_call":
             return {"success": True, "status": "idle", "message": "Not in call."}
 
         try:
-            await self.group_call.stop()
+            if hasattr(self, "pytgcalls_app") and self.pytgcalls_app:
+                try:
+                    await self.pytgcalls_app.leave_call(self.target_group_id)
+                except Exception:
+                    pass
+            if self.group_call:
+                try:
+                    await self.group_call.stop()
+                except Exception:
+                    pass
+
             self.status = "ready"
             with self._audio_lock:
                 self._audio_out_buffer.clear()
