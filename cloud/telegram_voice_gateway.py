@@ -90,12 +90,14 @@ class TelegramVoiceGateway:
         self.target_group_title: str = "Arya"
 
         self.client: Optional[Any] = None
+        self.pytgcalls_app: Optional[Any] = None
         self.group_call: Optional[Any] = None
         self.pytgcalls_factory: Optional[Any] = None
         self.cloud_brain: Optional[Any] = None
 
         self._audio_out_buffer: bytearray = bytearray()
         self._audio_lock = threading.Lock()
+        self._playout_task: Optional[asyncio.Task] = None
         self._event_listeners: List[Callable[[str, Any], None]] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
@@ -193,24 +195,12 @@ class TelegramVoiceGateway:
                 return {"success": False, "error": "Telegram network client not running."}
 
         try:
-            from pytgcalls import GroupCallFactory
-            from pytgcalls.group_call_factory import MTProtoClientType
-            from telethon.tl.functions.phone import CreateGroupCallRequest
-
             logger.info(f"Connecting to Telegram group: {self.target_group_title} ({self.target_group_id})...")
             group_entity = await self.client.get_entity(self.target_group_id)
 
             # Check if group call is active, or start it
             try:
-                import telethon.tl.functions.channels as channel_funcs
-                full_chat = await self.client(
-                    channel_funcs.GetFullChannelRequest(channel=group_entity)
-                ) if hasattr(group_entity, "broadcast") or getattr(group_entity, "megagroup", False) else None
-            except Exception:
-                full_chat = None
-
-            # Attempt to create call if not already active
-            try:
+                from telethon.tl.functions.phone import CreateGroupCallRequest
                 random_id = random.randint(100000, 99999999)
                 await self.client(
                     CreateGroupCallRequest(
@@ -221,22 +211,48 @@ class TelegramVoiceGateway:
                 )
                 logger.info("Created new Telegram group voice chat room.")
             except Exception as e:
-                # Group call may already be active; continue
-                logger.info(f"Group call check/creation: {e}")
+                logger.info(f"Group call check/creation notice: {e}")
 
-            # Join voice chat using PyTgCalls
+            # Join voice chat using PyTgCalls 2.x
             joined = False
             try:
                 from pytgcalls import PyTgCalls
-                self.pytgcalls_app = PyTgCalls(self.client)
-                await self.pytgcalls_app.start()
-                await self.pytgcalls_app.play(self.target_group_id)
+                from pytgcalls.types import MediaStream, ExternalMedia, GroupCallConfig, StreamFrames, Direction, Device
+
+                if self.pytgcalls_app is None:
+                    self.pytgcalls_app = PyTgCalls(self.client)
+
+                if not getattr(self.pytgcalls_app, "_is_running", False):
+                    await self.pytgcalls_app.start()
+
+                # Add real-time audio input callback
+                async def _on_stream_update(client, update):
+                    try:
+                        if isinstance(update, StreamFrames):
+                            if update.direction == Direction.INCOMING and update.device == Device.MICROPHONE:
+                                for frame in update.frames:
+                                    if frame.frame:
+                                        self._on_recorded_data(None, frame.frame, len(frame.frame))
+                    except Exception as frame_err:
+                        logger.debug(f"Audio frame receive error: {frame_err}")
+
+                self.pytgcalls_app.add_handler(_on_stream_update)
+
+                config = GroupCallConfig(auto_start=True)
+                media = MediaStream(ExternalMedia.AUDIO)
+                await self.pytgcalls_app.play(self.target_group_id, media, config=config)
                 joined = True
-                logger.info("Joined Telegram group call via PyTgCalls client.")
+                logger.info("Joined Telegram group call via PyTgCalls 2.x.")
+
+                # Start audio playout pacer
+                if self._playout_task is None or self._playout_task.done():
+                    self._playout_task = asyncio.create_task(self._playout_loop())
+
             except Exception as e1:
-                logger.info(f"PyTgCalls standard start fallback: {e1}")
+                logger.warning(f"PyTgCalls 2.x start failed: {e1}")
 
             if not joined:
+                # Safe legacy fallback for pytgcalls 0.9/1.x if present
                 try:
                     from pytgcalls import GroupCallFactory
                     from pytgcalls.group_call_factory import MTProtoClientType
@@ -247,9 +263,12 @@ class TelegramVoiceGateway:
                     )
                     await self.group_call.start(self.target_group_id)
                     joined = True
-                    logger.info("Joined Telegram group call via GroupCallFactory.")
+                    logger.info("Joined Telegram group call via legacy GroupCallFactory.")
                 except Exception as e2:
-                    logger.error(f"GroupCallFactory fallback also failed: {e2}")
+                    logger.warning(f"Legacy GroupCallFactory fallback not available: {e2}")
+
+            if not joined:
+                return {"success": False, "error": "Could not join voice chat with PyTgCalls drivers."}
 
             self.status = "in_call"
             self._broadcast("telegram_status", self.get_status())
@@ -275,12 +294,40 @@ class TelegramVoiceGateway:
             logger.error(f"Failed to start/join Telegram voice call: {exc}")
             return {"success": False, "error": str(exc)}
 
+    async def _playout_loop(self):
+        """Paces outgoing 48kHz audio to PyTgCalls in 20ms chunks (1920 bytes)."""
+        logger.info("Starting Telegram audio playout pacer loop.")
+        try:
+            from pytgcalls.types import Device
+            while self.status == "in_call":
+                chunk = None
+                with self._audio_lock:
+                    if len(self._audio_out_buffer) >= 1920:
+                        chunk = bytes(self._audio_out_buffer[:1920])
+                        del self._audio_out_buffer[:1920]
+                if chunk and self.pytgcalls_app:
+                    try:
+                        await self.pytgcalls_app.send_frame(self.target_group_id, Device.MICROPHONE, chunk)
+                    except Exception as e:
+                        logger.debug(f"send_frame error: {e}")
+                await asyncio.sleep(0.02)
+        except asyncio.CancelledError:
+            pass
+        except Exception as err:
+            logger.error(f"Error in audio playout pacer loop: {err}")
+        finally:
+            logger.info("Stopped Telegram audio playout pacer loop.")
+
     async def leave_call(self) -> Dict[str, Any]:
         """Leaves the active voice chat."""
         if self.status != "in_call":
             return {"success": True, "status": "idle", "message": "Not in call."}
 
         try:
+            if self._playout_task and not self._playout_task.done():
+                self._playout_task.cancel()
+                self._playout_task = None
+
             if hasattr(self, "pytgcalls_app") and self.pytgcalls_app:
                 try:
                     await self.pytgcalls_app.leave_call(self.target_group_id)
