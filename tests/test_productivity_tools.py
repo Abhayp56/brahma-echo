@@ -64,6 +64,18 @@ class TestProductivityTools(unittest.TestCase):
         try:
             res = loop.run_until_complete(execute_todoist_tool("list_tasks", {}))
             self.assertIsInstance(res, dict)
+
+            # Test update_task dispatch
+            up_res = loop.run_until_complete(
+                execute_todoist_tool("update_task", {"task_name": "non_existent_mock_xyz", "due_date": "tomorrow"})
+            )
+            self.assertIsInstance(up_res, dict)
+
+            # Test delete_task dispatch
+            del_res = loop.run_until_complete(
+                execute_todoist_tool("delete_task", {"task_name": "non_existent_mock_xyz"})
+            )
+            self.assertIsInstance(del_res, dict)
         finally:
             loop.close()
 

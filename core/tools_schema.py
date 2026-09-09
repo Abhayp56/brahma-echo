@@ -957,22 +957,26 @@ TOOL_DECLARATIONS = [
         "name": "todoist_control",
         "description": (
             "Manages tasks and to-do checklists using Todoist. "
-            "List active tasks, create new tasks with due dates and priority, complete tasks, or delete tasks."
+            "List active tasks, create new tasks, update or modify existing tasks (change name, due date, or priority), complete tasks, or delete tasks."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "list_tasks | add_task | complete_task | delete_task"
+                    "description": "list_tasks | add_task | update_task | complete_task | delete_task"
                 },
                 "task_name": {
                     "type": "STRING",
-                    "description": "Content or title of the task (e.g. 'Submit physics assignment', 'Buy groceries')."
+                    "description": "Content, title, or name of the task to add, update, complete, or delete (or keyword snippet of the task)."
+                },
+                "new_content": {
+                    "type": "STRING",
+                    "description": "New title or updated name for the task when action is update_task."
                 },
                 "due_date": {
                     "type": "STRING",
-                    "description": "Natural language due date (e.g. 'today', 'tomorrow at 5pm', 'next Monday')."
+                    "description": "Natural language due date (e.g. 'today', 'tomorrow at 5pm', 'next Monday', '10 Sep 17:00')."
                 },
                 "priority": {
                     "type": "INTEGER",
