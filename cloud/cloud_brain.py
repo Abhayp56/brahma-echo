@@ -384,6 +384,32 @@ class CloudBrain:
             res = await execute_utility_tool(name, args)
             return types.FunctionResponse(id=call_id, name=name, response=res)
 
+        # 1.7 News headlines service (GNews + Google News fallback)
+        if name == "get_news":
+            from cloud.news_service import get_news_headlines
+            query = args.get("query")
+            category = args.get("category")
+            max_res = int(args.get("max_results") or 5)
+            res = await get_news_headlines(query=query, category=category, max_results=max_res)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        # 1.8 Google Workspace: Calendar & Gmail
+        if name == "calendar_control":
+            from cloud.google_workspace import execute_calendar_tool
+            res = await execute_calendar_tool(args.get("action", "list_events"), args)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        if name == "gmail_control":
+            from cloud.google_workspace import execute_gmail_tool
+            res = await execute_gmail_tool(args.get("action", "list_emails"), args)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        # 1.9 Todoist task management
+        if name == "todoist_control":
+            from cloud.todoist_service import execute_todoist_tool
+            res = await execute_todoist_tool(args.get("action", "list_tasks"), args)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."

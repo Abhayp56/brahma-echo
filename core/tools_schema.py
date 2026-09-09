@@ -849,5 +849,141 @@ TOOL_DECLARATIONS = [
             },
             "required": ["url"]
         }
+    },
+    {
+        "name": "get_news",
+        "description": (
+            "Fetches breaking news headlines and top stories via GNews API and Google News. "
+            "Filter by category (business, technology, sports, science, general) or topic keyword."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Search keyword or topic (e.g. 'artificial intelligence', 'SpaceX', 'Indian economy')."
+                },
+                "category": {
+                    "type": "STRING",
+                    "description": "'general' | 'technology' | 'business' | 'sports' | 'science' (default: 'general')"
+                },
+                "max_results": {
+                    "type": "INTEGER",
+                    "description": "Number of headlines to return (default: 5, max: 10)."
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "calendar_control",
+        "description": (
+            "Manages Google Calendar. "
+            "List upcoming meetings and events, schedule new appointments, or delete/cancel calendar events."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "list_events | create_event | delete_event"
+                },
+                "summary": {
+                    "type": "STRING",
+                    "description": "Title or summary of the event (e.g. 'Team Sync', 'Doctor Appointment')."
+                },
+                "start_time": {
+                    "type": "STRING",
+                    "description": "ISO start time (e.g. '2026-09-10T14:00:00Z') or date ('2026-09-10')."
+                },
+                "end_time": {
+                    "type": "STRING",
+                    "description": "Optional ISO end time (defaults to 1 hour after start)."
+                },
+                "description": {
+                    "type": "STRING",
+                    "description": "Optional notes or details for the event."
+                },
+                "location": {
+                    "type": "STRING",
+                    "description": "Optional physical location or meeting link."
+                },
+                "event_id": {
+                    "type": "STRING",
+                    "description": "Event ID required when action is delete_event."
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "gmail_control",
+        "description": (
+            "Reads, searches, and sends emails through the user's Gmail account. "
+            "List unread emails, read details of an email, or send a new email on the user's behalf."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "list_emails | read_email | send_email"
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "Search query for list_emails (e.g. 'is:unread', 'from:professor', 'newer_than:2d')."
+                },
+                "message_id": {
+                    "type": "STRING",
+                    "description": "Message ID when reading full content via read_email."
+                },
+                "to": {
+                    "type": "STRING",
+                    "description": "Recipient email address when action is send_email."
+                },
+                "subject": {
+                    "type": "STRING",
+                    "description": "Subject line when sending an email."
+                },
+                "body": {
+                    "type": "STRING",
+                    "description": "Body message text when sending an email."
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "todoist_control",
+        "description": (
+            "Manages tasks and to-do checklists using Todoist. "
+            "List active tasks, create new tasks with due dates and priority, complete tasks, or delete tasks."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "list_tasks | add_task | complete_task | delete_task"
+                },
+                "task_name": {
+                    "type": "STRING",
+                    "description": "Content or title of the task (e.g. 'Submit physics assignment', 'Buy groceries')."
+                },
+                "due_date": {
+                    "type": "STRING",
+                    "description": "Natural language due date (e.g. 'today', 'tomorrow at 5pm', 'next Monday')."
+                },
+                "priority": {
+                    "type": "INTEGER",
+                    "description": "Priority from 1 (normal) to 4 (urgent)."
+                },
+                "task_id": {
+                    "type": "STRING",
+                    "description": "Specific task ID if known."
+                }
+            },
+            "required": ["action"]
+        }
     }
 ]

@@ -471,6 +471,59 @@ async def api_execute_utility(payload: Dict[str, Any]):
     return await execute_utility_tool(tool_name, args)
 
 
+# =========================================================================
+# Productivity Tool Endpoints: News, Calendar, Gmail, Todoist
+# =========================================================================
+
+@app.get("/api/news")
+async def api_get_news(query: Optional[str] = None, category: Optional[str] = None, limit: int = 5):
+    """Direct REST endpoint to fetch news headlines."""
+    from cloud.news_service import get_news_headlines
+    return await get_news_headlines(query=query, category=category, max_results=limit)
+
+
+@app.get("/api/calendar/events")
+async def api_get_calendar_events(max_results: int = 10):
+    """Direct REST endpoint to list upcoming Google Calendar events."""
+    from cloud.google_workspace import execute_calendar_tool
+    return await execute_calendar_tool("list_events", {"max_results": max_results})
+
+
+@app.post("/api/calendar/create")
+async def api_create_calendar_event(payload: Dict[str, Any]):
+    """Direct REST endpoint to create a Google Calendar event."""
+    from cloud.google_workspace import execute_calendar_tool
+    return await execute_calendar_tool("create_event", payload)
+
+
+@app.get("/api/gmail/emails")
+async def api_get_gmail_emails(query: str = "is:unread", limit: int = 5):
+    """Direct REST endpoint to list/search Gmail messages."""
+    from cloud.google_workspace import execute_gmail_tool
+    return await execute_gmail_tool("list_emails", {"query": query, "max_results": limit})
+
+
+@app.post("/api/gmail/send")
+async def api_send_gmail_email(payload: Dict[str, Any]):
+    """Direct REST endpoint to send an email via Gmail."""
+    from cloud.google_workspace import execute_gmail_tool
+    return await execute_gmail_tool("send_email", payload)
+
+
+@app.get("/api/todoist/tasks")
+async def api_get_todoist_tasks(filter: Optional[str] = None):
+    """Direct REST endpoint to list active Todoist tasks."""
+    from cloud.todoist_service import execute_todoist_tool
+    return await execute_todoist_tool("list_tasks", {"filter": filter})
+
+
+@app.post("/api/todoist/create")
+async def api_create_todoist_task(payload: Dict[str, Any]):
+    """Direct REST endpoint to create a Todoist task."""
+    from cloud.todoist_service import execute_todoist_tool
+    return await execute_todoist_tool("add_task", payload)
+
+
 @app.websocket("/ws/web")
 async def websocket_web(websocket: WebSocket):
     """Real-time WebSocket connection for web browser interface."""
