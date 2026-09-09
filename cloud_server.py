@@ -390,6 +390,87 @@ async def disconnect_whatsapp():
     return WhatsAppGateway.get_instance().disconnect()
 
 
+# =========================================================================
+# Server-Side Live Utility Tool REST Endpoints (Open-Meteo, Nominatim, etc.)
+# =========================================================================
+
+@app.get("/api/utility/weather")
+async def api_get_weather(location: str = "Mumbai", lat: Optional[float] = None, lon: Optional[float] = None):
+    """Direct REST endpoint to test Open-Meteo & Nominatim weather."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("get_weather", {"location": location, "lat": lat, "lon": lon})
+
+
+@app.get("/api/utility/currency")
+async def api_convert_currency(amount: float = 1.0, from_curr: str = "USD", to_curr: str = "INR"):
+    """Direct REST endpoint to test Frankfurter currency conversion."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("convert_currency", {"amount": amount, "from_currency": from_curr, "to_currency": to_curr})
+
+
+@app.get("/api/utility/wiki")
+async def api_get_wiki(query: str = "Artificial intelligence"):
+    """Direct REST endpoint to test Wikipedia REST API summaries."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("wikipedia_summary", {"query": query})
+
+
+@app.get("/api/utility/joke")
+async def api_get_joke(category: str = "Programming,Miscellaneous"):
+    """Direct REST endpoint to test JokeAPI safe jokes."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("get_joke", {"category": category})
+
+
+@app.get("/api/utility/advice")
+async def api_get_advice(topic: Optional[str] = None):
+    """Direct REST endpoint to test Advice Slip API."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("get_advice", {"topic": topic})
+
+
+@app.get("/api/utility/shorten")
+async def api_shorten_url(url: str):
+    """Direct REST endpoint to test TinyURL link shortening."""
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool("shorten_url", {"url": url})
+
+
+@app.get("/api/utility/chart")
+async def api_generate_chart(
+    chart_type: str = "bar",
+    labels: str = "Jan,Feb,Mar,Apr",
+    data: str = "10,25,15,30",
+    title: str = "Sample Metric",
+):
+    """Direct REST endpoint to test QuickChart visualization."""
+    from cloud.cloud_utilities import execute_utility_tool
+    label_list = [item.strip() for item in labels.split(",") if item.strip()]
+    data_list = []
+    for d in data.split(","):
+        try:
+            data_list.append(float(d.strip()))
+        except ValueError:
+            pass
+    return await execute_utility_tool("generate_chart", {
+        "chart_type": chart_type,
+        "labels": label_list,
+        "data": data_list,
+        "title": title,
+    })
+
+
+@app.post("/api/utility/execute")
+async def api_execute_utility(payload: Dict[str, Any]):
+    """Generic execution endpoint for any of the 8 utilities."""
+    tool_name = payload.get("tool")
+    args = payload.get("args", {})
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="Missing 'tool' parameter.")
+    from cloud.cloud_utilities import execute_utility_tool
+    return await execute_utility_tool(tool_name, args)
+
+
 @app.websocket("/ws/web")
 async def websocket_web(websocket: WebSocket):
     """Real-time WebSocket connection for web browser interface."""

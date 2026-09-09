@@ -672,5 +672,182 @@ TOOL_DECLARATIONS = [
             },
             "required": ["command"]
         }
+    },
+    {
+        "name": "get_weather",
+        "description": (
+            "Fetches live, real-time weather conditions and forecasts via Open-Meteo. "
+            "Returns temperature, humidity, precipitation, wind speed, and human-readable conditions."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "location": {
+                    "type": "STRING",
+                    "description": "City or location name (e.g. 'Mumbai', 'London', 'New York', 'Tokyo')."
+                },
+                "lat": {
+                    "type": "NUMBER",
+                    "description": "Optional direct latitude."
+                },
+                "lon": {
+                    "type": "NUMBER",
+                    "description": "Optional direct longitude."
+                }
+            },
+            "required": ["location"]
+        }
+    },
+    {
+        "name": "geocode_location",
+        "description": (
+            "Geocodes a location or address to latitude/longitude, or reverse geocodes coordinates to an address using OpenStreetMap Nominatim."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "City or address to lookup (e.g. 'Eiffel Tower', 'Bangalore')."
+                },
+                "lat": {
+                    "type": "NUMBER",
+                    "description": "Latitude for reverse geocoding."
+                },
+                "lon": {
+                    "type": "NUMBER",
+                    "description": "Longitude for reverse geocoding."
+                },
+                "reverse": {
+                    "type": "BOOLEAN",
+                    "description": "True if looking up address from coordinates."
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "convert_currency",
+        "description": (
+            "Live currency conversion using Frankfurter / European Central Bank exchange rates. "
+            "Converts amounts between USD, EUR, INR, GBP, JPY, CAD, AUD, and all major currencies."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "amount": {
+                    "type": "NUMBER",
+                    "description": "Amount of money to convert (e.g. 100)."
+                },
+                "from_currency": {
+                    "type": "STRING",
+                    "description": "3-letter source currency code (e.g. 'USD', 'EUR', 'INR'). Default: 'USD'."
+                },
+                "to_currency": {
+                    "type": "STRING",
+                    "description": "3-letter target currency code (e.g. 'INR', 'USD', 'EUR'). Default: 'INR'."
+                }
+            },
+            "required": ["amount"]
+        }
+    },
+    {
+        "name": "wikipedia_summary",
+        "description": (
+            "Retrieves verified, factual encyclopedia article summaries and thumbnail image URLs from Wikipedia."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Topic, concept, historical event, or person to look up (e.g. 'Quantum computing', 'Alan Turing')."
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "generate_chart",
+        "description": (
+            "Generates a chart or graph image URL using QuickChart. "
+            "Supports bar, line, pie, doughnut, and radar charts. Returns a direct viewable and shareable image URL."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "chart_type": {
+                    "type": "STRING",
+                    "description": "'bar' | 'line' | 'pie' | 'doughnut' | 'radar' (default: 'bar')"
+                },
+                "labels": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "Labels for the X-axis or chart categories (e.g. ['Jan', 'Feb', 'Mar'])."
+                },
+                "data": {
+                    "type": "ARRAY",
+                    "items": {"type": "NUMBER"},
+                    "description": "Numerical values corresponding to the labels (e.g. [120, 190, 300])."
+                },
+                "dataset_label": {
+                    "type": "STRING",
+                    "description": "Legend label for the dataset (e.g. 'Sales', 'Hours Studied')."
+                },
+                "title": {
+                    "type": "STRING",
+                    "description": "Title displayed at the top of the chart."
+                }
+            },
+            "required": ["labels", "data"]
+        }
+    },
+    {
+        "name": "get_advice",
+        "description": (
+            "Fetches a piece of random or topic-based life advice, wisdom, or practical thoughts from Advice Slip."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "topic": {
+                    "type": "STRING",
+                    "description": "Optional keyword or theme to search advice for (e.g. 'work', 'time', 'friendship')."
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "get_joke",
+        "description": (
+            "Fetches safe, filtered programming jokes, puns, or general humor from JokeAPI. All content is strictly safe-for-work."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "category": {
+                    "type": "STRING",
+                    "description": "'Programming' | 'Miscellaneous' | 'Pun' | 'Any' (default: 'Programming,Miscellaneous')"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "shorten_url",
+        "description": (
+            "Shortens a long web link or URL into a clean, compact TinyURL link for messaging or sharing."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "url": {
+                    "type": "STRING",
+                    "description": "The full long URL to shorten (e.g. 'https://en.wikipedia.org/wiki/Artificial_intelligence')."
+                }
+            },
+            "required": ["url"]
+        }
     }
 ]

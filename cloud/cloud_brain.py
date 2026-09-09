@@ -369,6 +369,21 @@ class CloudBrain:
                 res = gateway.send_text(recipient, message)
                 return types.FunctionResponse(id=call_id, name=name, response=res)
 
+        # 1.6 Server-side live utility APIs (Open-Meteo, Nominatim, Frankfurter, Wikipedia, QuickChart, Advice, Joke, TinyURL)
+        if name in {
+            "get_weather",
+            "geocode_location",
+            "convert_currency",
+            "wikipedia_summary",
+            "generate_chart",
+            "get_advice",
+            "get_joke",
+            "shorten_url",
+        }:
+            from cloud.cloud_utilities import execute_utility_tool
+            res = await execute_utility_tool(name, args)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."
