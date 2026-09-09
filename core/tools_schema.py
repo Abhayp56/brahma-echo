@@ -989,39 +989,5 @@ TOOL_DECLARATIONS = [
             },
             "required": ["action"]
         }
-    },
-    {
-        "name": "make_phone_call",
-        "description": (
-            "Places an outbound phone call using conversational AI (via Vapi.ai). "
-            "Can call the user directly (e.g. wake-up call, morning briefing, urgent alert) "
-            "or call another phone number on the user's behalf (e.g. booking an appointment, inquiring at a business, delivering a message)."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "call_me | call_number | check_call_status | list_calls"
-                },
-                "phone_number": {
-                    "type": "STRING",
-                    "description": "Destination phone number with country code (e.g. '+919876543210', '+14155552671'). Defaults to configured personal number when action is call_me."
-                },
-                "task_objective": {
-                    "type": "STRING",
-                    "description": "The goal, topic, or message to deliver or accomplish during the call (e.g. 'Wake me up with today\\'s calendar events and tech news', 'Ask Dr. Sharma\\'s clinic for an appointment tomorrow at 5 PM')."
-                },
-                "first_message": {
-                    "type": "STRING",
-                    "description": "Optional custom opening sentence ARYA should speak when the call is answered."
-                },
-                "call_id": {
-                    "type": "STRING",
-                    "description": "Call ID when action is check_call_status."
-                }
-            },
-            "required": ["action"]
-        }
     }
 ]

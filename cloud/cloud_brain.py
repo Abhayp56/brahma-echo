@@ -410,12 +410,6 @@ class CloudBrain:
             res = await execute_todoist_tool(args.get("action", "list_tasks"), args)
             return types.FunctionResponse(id=call_id, name=name, response=res)
 
-        # 1.10 Outbound AI Phone Calls (Vapi.ai)
-        if name == "make_phone_call":
-            from cloud.vapi_service import execute_vapi_tool
-            res = await execute_vapi_tool(args.get("action", "call_me"), args)
-            return types.FunctionResponse(id=call_id, name=name, response=res)
-
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."
