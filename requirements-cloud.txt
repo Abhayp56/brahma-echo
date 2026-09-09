@@ -11,7 +11,3 @@ duckduckgo-search>=5.0.0
 neonize>=0.4.3
 qrcode>=7.4.2
 pillow>=10.0.0
-telethon>=1.36.0
-py-tgcalls>=2.0.0
-ntgcalls>=2.0.0
-audioop-lts>=0.2.1; python_version >= "3.13"

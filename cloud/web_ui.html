@@ -116,49 +116,6 @@
       transform: translateY(-1px);
     }
 
-    .telegram-btn {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(0, 136, 204, 0.08);
-      border: 1px solid rgba(0, 136, 204, 0.3);
-      color: #0088cc;
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      backdrop-filter: blur(12px);
-      transition: all 0.25s ease;
-    }
-
-    .telegram-btn:hover {
-      background: rgba(0, 136, 204, 0.18);
-      border-color: #0088cc;
-      box-shadow: 0 0 12px rgba(0, 136, 204, 0.35);
-      transform: translateY(-1px);
-    }
-
-    .tg-status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #777;
-      display: inline-block;
-      transition: 0.3s;
-    }
-
-    .tg-status-dot.online {
-      background: #0088cc;
-      box-shadow: 0 0 8px #0088cc;
-    }
-
-    .tg-status-dot.in-call {
-      background: #00ff88;
-      box-shadow: 0 0 10px #00ff88;
-      animation: pulse 1.5s infinite;
-    }
-
     .whatsapp-btn {
       display: flex;
       align-items: center;
@@ -694,9 +651,6 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="telegram-btn" id="openTelegramBtn" onclick="toggleTelegramCall()" title="Start or End 1-on-1 Telegram Voice Call with ARYA">
-        📞 Telegram <span class="tg-status-dot" id="tgNavDot"></span>
-      </button>
       <button class="whatsapp-btn" id="openWhatsAppBtn" onclick="openWhatsAppModal()" title="Manage Server-Side WhatsApp & AI Auto-Replies">
         📱 WhatsApp <span class="wa-status-dot" id="waNavDot"></span>
       </button>
@@ -1772,80 +1726,9 @@
       }
     });
 
-    // 8. Telegram 1-on-1 Voice Call Controller
-    let isTelegramInCall = false;
-    const tgNavDot = document.getElementById('tgNavDot');
-    const openTelegramBtn = document.getElementById('openTelegramBtn');
-
-    async function fetchTelegramStatus() {
-      try {
-        const res = await fetch('/api/telegram/status');
-        const data = await res.json();
-        updateTelegramUI(data);
-      } catch (err) {
-        console.warn('Telegram status check error:', err);
-      }
-    }
-
-    function updateTelegramUI(data) {
-      if (!data) return;
-      isTelegramInCall = !!data.in_call;
-      if (isTelegramInCall) {
-        if (tgNavDot) tgNavDot.className = 'tg-status-dot in-call';
-        if (openTelegramBtn) {
-          openTelegramBtn.style.borderColor = '#00ff88';
-          openTelegramBtn.style.color = '#00ff88';
-          openTelegramBtn.innerHTML = '🟢 In Call <span class="tg-status-dot in-call"></span>';
-        }
-      } else if (data.status === 'ready') {
-        if (tgNavDot) tgNavDot.className = 'tg-status-dot online';
-        if (openTelegramBtn) {
-          openTelegramBtn.style.borderColor = 'rgba(0, 136, 204, 0.3)';
-          openTelegramBtn.style.color = '#0088cc';
-          openTelegramBtn.innerHTML = '📞 Call Telegram <span class="tg-status-dot online"></span>';
-        }
-      } else {
-        if (tgNavDot) tgNavDot.className = 'tg-status-dot';
-        if (openTelegramBtn) {
-          openTelegramBtn.innerHTML = '📞 Telegram <span class="tg-status-dot"></span>';
-        }
-      }
-    }
-
-    window.toggleTelegramCall = async function() {
-      if (!openTelegramBtn) return;
-      if (isTelegramInCall) {
-        if (confirm('Leave the Telegram voice room?')) {
-          openTelegramBtn.textContent = 'Leaving...';
-          try {
-            await fetch('/api/telegram/leave-call', { method: 'POST' });
-            fetchTelegramStatus();
-          } catch (e) {
-            alert('Failed to leave call: ' + e.message);
-          }
-        }
-      } else {
-        openTelegramBtn.textContent = 'Joining Room...';
-        try {
-          const res = await fetch('/api/telegram/start-call', { method: 'POST' });
-          const data = await res.json();
-          if (data.success) {
-            appendMsg('sys', '📞 ARYA joined your private Arya Telegram voice room!');
-          } else {
-            alert('Could not join Telegram room: ' + (data.error || 'Unknown error'));
-          }
-          fetchTelegramStatus();
-        } catch (e) {
-          alert('Call request failed: ' + e.message);
-        }
-      }
-    };
-
-    // Periodic WhatsApp & Telegram status check
+    // Periodic WhatsApp status check
     setInterval(fetchWhatsAppStatus, 5000);
-    setInterval(fetchTelegramStatus, 5000);
     fetchWhatsAppStatus();
-    fetchTelegramStatus();
   </script>
 </body>
 </html>

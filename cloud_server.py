@@ -206,39 +206,6 @@ def broadcast_whatsapp_event(event_type: str, payload: Any):
             pass
 
 
-def broadcast_telegram_event(event_type: str, payload: Any):
-    """Broadcasts real-time Telegram call events to browser clients."""
-    global main_loop
-    msg = json.dumps({"type": event_type, "data": payload})
-    for client in list(web_clients):
-        try:
-            if main_loop and main_loop.is_running():
-                asyncio.run_coroutine_threadsafe(client.send_text(msg), main_loop)
-            else:
-                asyncio.create_task(client.send_text(msg))
-        except Exception:
-            pass
-
-
-def handle_audio_out(chunk: bytes):
-    """Broadcasts Gemini Live audio to both web browser and active Telegram voice call."""
-    broadcast_audio_to_web(chunk)
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        TelegramVoiceGateway.get_instance().feed_output_audio(chunk)
-    except Exception:
-        pass
-
-
-def handle_interrupted():
-    """Handles user barge-in interruption to immediately stop playback and clear audio buffers."""
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        TelegramVoiceGateway.get_instance().clear_output_buffer()
-    except Exception:
-        pass
-
-
 @app.on_event("startup")
 async def on_startup():
     global brain, main_loop
@@ -246,10 +213,9 @@ async def on_startup():
     logger.info("Initializing ARYA Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
-        on_audio_out=handle_audio_out,
+        on_audio_out=broadcast_audio_to_web,
         on_transcript=broadcast_transcript_to_web,
         on_turn_complete=broadcast_turn_complete_to_web,
-        on_interrupted=handle_interrupted,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
     )
     # Start Gemini Live background loop
@@ -264,16 +230,6 @@ async def on_startup():
     except Exception as wa_err:
         logger.warning(f"Could not start WhatsApp Gateway: {wa_err}")
 
-    # Start Telegram Voice Gateway
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        tg_voice = TelegramVoiceGateway.get_instance()
-        tg_voice.set_cloud_brain(brain)
-        tg_voice.add_listener(broadcast_telegram_event)
-        tg_voice.start()
-    except Exception as tg_err:
-        logger.warning(f"Could not start Telegram Voice Gateway: {tg_err}")
-
 
 @app.get("/", response_class=HTMLResponse)
 async def get_web_ui():
@@ -282,13 +238,6 @@ async def get_web_ui():
     if ui_path.exists():
         return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>ARYA Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
-
-
-@app.get("/health")
-@app.get("/ping")
-async def health_check():
-    """Ultra-lightweight heartbeat endpoint for UptimeRobot / uptime monitors."""
-    return {"status": "ok", "service": "Brahma Cloud Brain"}
 
 
 @app.get("/api/status")
@@ -439,43 +388,6 @@ async def disconnect_whatsapp():
     """Disconnects or resets the WhatsApp companion session."""
     from cloud.whatsapp_gateway import WhatsAppGateway
     return WhatsAppGateway.get_instance().disconnect()
-
-
-# =========================================================================
-# Telegram Private 1-on-1 Voice Calling REST Endpoints
-# =========================================================================
-
-@app.get("/api/telegram/status")
-async def get_telegram_status():
-    """Returns the current connection and call status of the Telegram Voice Gateway."""
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        return TelegramVoiceGateway.get_instance().get_status()
-    except Exception as exc:
-        logger.error(f"Error getting Telegram status: {exc}")
-        return {"status": "error", "error": str(exc), "is_configured": False, "in_call": False}
-
-
-@app.post("/api/telegram/start-call")
-async def start_telegram_call():
-    """Starts or joins the group voice call in the private Arya group."""
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        return await TelegramVoiceGateway.get_instance().start_call()
-    except Exception as exc:
-        logger.error(f"Error starting Telegram call: {exc}")
-        return {"success": False, "error": str(exc)}
-
-
-@app.post("/api/telegram/leave-call")
-async def leave_telegram_call():
-    """Leaves the active Telegram group voice call."""
-    try:
-        from cloud.telegram_voice_gateway import TelegramVoiceGateway
-        return await TelegramVoiceGateway.get_instance().leave_call()
-    except Exception as exc:
-        logger.error(f"Error leaving Telegram call: {exc}")
-        return {"success": False, "error": str(exc)}
 
 
 @app.websocket("/ws/web")

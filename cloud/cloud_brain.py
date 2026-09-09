@@ -112,14 +112,12 @@ class CloudBrain:
         on_audio_out: Optional[Callable[[bytes], None]] = None,
         on_transcript: Optional[Callable[[str, str], None]] = None,
         on_turn_complete: Optional[Callable[[], None]] = None,
-        on_interrupted: Optional[Callable[[], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
     ):
         self.dispatcher = tool_dispatcher
         self.on_audio_out = on_audio_out
         self.on_transcript = on_transcript
         self.on_turn_complete = on_turn_complete
-        self.on_interrupted = on_interrupted
         self.on_log = on_log or (lambda msg: logger.info(f"[BrainLog] {msg}"))
 
         self.session = None
@@ -162,11 +160,6 @@ class CloudBrain:
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
             "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
-            "VOICE PACING & CLARITY INSTRUCTIONS:\n"
-            "- Speak with a natural, calm, confident, and measured conversational cadence (1.0x human speaking speed).\n"
-            "- Never speak too fast, rush syllables, or slur words together.\n"
-            "- Articulate every word crisply with warmth and effortless poise, like F.R.I.D.A.Y.\n"
-            "- Keep spoken answers concise, direct, and conversational (typically 1 to 3 sentences) so the conversation flows seamlessly without long monologues."
         )
 
         return types.LiveConnectConfig(
@@ -193,11 +186,6 @@ class CloudBrain:
             )
         except Exception as e:
             logger.error(f"Failed to forward realtime audio: {e}")
-
-    async def send_audio(self, pcm_chunk: bytes):
-        """Forward real-time audio from Telegram or other gateways into Gemini Live."""
-        await self.handle_incoming_audio(pcm_chunk)
-
 
     async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
@@ -381,22 +369,6 @@ class CloudBrain:
                 res = gateway.send_text(recipient, message)
                 return types.FunctionResponse(id=call_id, name=name, response=res)
 
-        # 1.6 Telegram Private Voice Call Gateway
-        if name == "telegram_call":
-            action = args.get("action", "start_call")
-            from cloud.telegram_voice_gateway import TelegramVoiceGateway
-            tg_gateway = TelegramVoiceGateway.get_instance()
-
-            if action == "start_call":
-                res = await tg_gateway.start_call()
-                return types.FunctionResponse(id=call_id, name=name, response=res)
-            elif action == "end_call":
-                res = await tg_gateway.leave_call()
-                return types.FunctionResponse(id=call_id, name=name, response=res)
-            else:  # check_status
-                res = tg_gateway.get_status()
-                return types.FunctionResponse(id=call_id, name=name, response=res)
-
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
             err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."
@@ -476,18 +448,9 @@ class CloudBrain:
                                 if self.on_audio_out:
                                     self.on_audio_out(response.data)
 
-                            # Handle transcriptions and barge-in
+                            # Handle transcriptions
                             if response.server_content:
                                 sc = response.server_content
-                                if getattr(sc, "interrupted", False):
-                                    self.log("⚡ User interrupted ARYA; cancelling playback.")
-                                    out_buf = []
-                                    if self.on_interrupted:
-                                        try:
-                                            self.on_interrupted()
-                                        except Exception:
-                                            pass
-
                                 if sc.output_transcription and sc.output_transcription.text:
                                     txt = sc.output_transcription.text.strip()
                                     if txt:
