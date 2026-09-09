@@ -99,6 +99,8 @@ def exchange_and_save(code: str, client_id: str, client_secret: str, redirect_ur
 
         # Live verification
         try:
+            if str(BASE_DIR) not in sys.path:
+                sys.path.insert(0, str(BASE_DIR))
             from cloud.google_workspace import list_calendar_events_sync, list_emails_sync
             print("\n" + "-" * 50)
             print("Verifying Calendar Connection...")
@@ -106,17 +108,20 @@ def exchange_and_save(code: str, client_id: str, client_secret: str, redirect_ur
             if cal_res.get("success"):
                 print(f"[OK] Calendar Connected! Found {cal_res.get('total', 0)} upcoming events.")
             else:
-                print(f"[!] Calendar Warning: {cal_res.get('error')}")
+                print(f"[!] Calendar Notice: {cal_res.get('error')}")
 
             print("\nVerifying Gmail Connection...")
             gmail_res = list_emails_sync(max_results=3)
             if gmail_res.get("success"):
                 print(f"[OK] Gmail Connected! Found {gmail_res.get('total', 0)} unread emails.")
+                for m in gmail_res.get("messages", []):
+                    subj = m.get("subject", "(No subject)").encode("ascii", "replace").decode("ascii")
+                    print(f"    - {subj}")
             else:
-                print(f"[!] Gmail Warning: {gmail_res.get('error')}")
+                print(f"[!] Gmail Notice: {gmail_res.get('error')}")
             print("-" * 50)
         except Exception as ve:
-            print(f"[!] Verification warning: {ve}")
+            print(f"[!] Verification notice: {ve}")
 
         return True
     except Exception as e:
