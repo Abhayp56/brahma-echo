@@ -42,6 +42,9 @@ def get_vapi_config() -> Dict[str, str]:
     phone_number_id = os.environ.get("VAPI_PHONE_NUMBER_ID", "").strip()
     my_number = os.environ.get("MY_PHONE_NUMBER", "").strip()
 
+    voice_provider = os.environ.get("VAPI_VOICE_PROVIDER", "").strip()
+    voice_id = os.environ.get("VAPI_VOICE_ID", "").strip()
+
     if API_CONFIG_PATH.exists():
         try:
             with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -49,6 +52,8 @@ def get_vapi_config() -> Dict[str, str]:
                 api_key = api_key or data.get("vapi_api_key", "").strip()
                 phone_number_id = phone_number_id or data.get("vapi_phone_number_id", "").strip()
                 my_number = my_number or data.get("my_phone_number", "").strip()
+                voice_provider = voice_provider or data.get("vapi_voice_provider", "").strip()
+                voice_id = voice_id or data.get("vapi_voice_id", "").strip()
         except Exception as e:
             logger.warning(f"Error reading {API_CONFIG_PATH}: {e}")
 
@@ -56,6 +61,8 @@ def get_vapi_config() -> Dict[str, str]:
         "vapi_api_key": api_key,
         "vapi_phone_number_id": phone_number_id,
         "my_phone_number": my_number,
+        "voice_provider": voice_provider or "azure",
+        "voice_id": voice_id or "en-IN-NeerjaNeural",
     }
 
 
@@ -72,6 +79,9 @@ def _format_phone_number(raw_number: str) -> str:
         # If user provides 10-digit Indian number without country code, default to +91
         if len(cleaned) == 10:
             cleaned = "+91" + cleaned
+        elif len(cleaned) == 11 and cleaned.startswith("0"):
+            # e.g. 09876543210 -> +919876543210
+            cleaned = "+91" + cleaned[1:]
         else:
             cleaned = "+" + cleaned
     return cleaned
@@ -129,10 +139,13 @@ def make_phone_call_sync(
     """
     Initiate an outbound phone call with an intelligent conversational AI assistant.
     If phone_number is omitted, calls the user's default configured number.
+    Optimized with natural Indian voice and bilingual comprehension.
     """
     conf = get_vapi_config()
     phone_number_id = conf.get("vapi_phone_number_id")
     my_number = conf.get("my_phone_number")
+    voice_provider = conf.get("voice_provider", "azure")
+    voice_id = conf.get("voice_id", "en-IN-NeerjaNeural")
 
     if not conf.get("vapi_api_key") or not phone_number_id:
         return {
@@ -151,32 +164,33 @@ def make_phone_call_sync(
     formatted_number = _format_phone_number(target_number)
     is_calling_owner = bool(my_number and formatted_number == _format_phone_number(my_number))
 
-    # Construct task-tailored system prompt for the conversational assistant
+    # Construct India-tailored system prompt for the conversational assistant
     if is_calling_owner:
         system_prompt = (
-            f"You are ARYA, the personal AI voice assistant calling your boss {caller_name}.\n"
+            f"You are ARYA, the personal AI voice assistant calling your boss {caller_name} in India.\n"
             f"Purpose of this phone call: {task_objective or 'Deliver requested briefing or check-in'}.\n"
             f"Guidelines:\n"
-            f"- Speak warmly, professionally, and conversationally in a natural human voice.\n"
-            f"- Keep sentences clear and concise for phone communication.\n"
-            f"- Fulfill the user's requested briefing or query interactively.\n"
-            f"- Wrap up politely when done."
+            f"- Speak warmly, professionally, and naturally in fluent Indian English.\n"
+            f"- Keep sentences clear, crisp, and conversational for phone communication.\n"
+            f"- Accurately pronounce Indian names, times, and dates.\n"
+            f"- Answer the user's questions interactively, and wrap up politely when done."
         )
         if not first_message:
-            first_message = f"Hello {caller_name}, this is ARYA calling. {task_objective or 'How can I help you right now?'}"
+            first_message = f"Hello {caller_name}, this is ARYA calling. {task_objective or 'How can I assist you right now?'}"
     else:
         system_prompt = (
-            f"You are ARYA, a polite, professional, and articulate personal AI voice assistant calling on behalf of {caller_name}.\n"
+            f"You are ARYA, a polite, professional, and articulate personal AI voice assistant calling on behalf of {caller_name} in India.\n"
             f"Objective of this call: {task_objective or 'General inquiry'}.\n"
             f"Guidelines:\n"
-            f"- Clearly state that you are calling on behalf of {caller_name}.\n"
+            f"- Clearly state upfront: 'Namaste/Hello, I am ARYA calling on behalf of {caller_name}.'\n"
+            f"- Speak in clear, polite Indian English. If the person speaks in Hindi, understand and respond politely in simple Hindi or Hinglish.\n"
             f"- Be courteous, concise, and listen attentively to the person's answers.\n"
-            f"- Note all relevant details, appointment slots, or answers they give.\n"
+            f"- Accurately note all relevant details, appointment slots, or answers they give.\n"
             f"- Thank them warmly and conclude the call once the objective is reached."
         )
         if not first_message:
             first_message = (
-                f"Hello! I am ARYA, an AI voice assistant calling on behalf of {caller_name}. "
+                f"Hello! I am ARYA, calling on behalf of {caller_name}. "
                 f"May I speak with you regarding {task_objective or 'a quick inquiry'}?"
             )
 
@@ -195,8 +209,8 @@ def make_phone_call_sync(
                 ],
             },
             "voice": {
-                "provider": "11labs",
-                "voiceId": "21m00Tcm4TlvDq8ikWAM",  # Rachel - natural, clear voice
+                "provider": voice_provider,
+                "voiceId": voice_id,
             },
             "firstMessage": first_message,
         },
