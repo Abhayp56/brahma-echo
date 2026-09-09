@@ -61,6 +61,69 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         pass  # Quiet HTTP server logs
 
 
+def exchange_and_save(code: str, client_id: str, client_secret: str, redirect_uri: str) -> bool:
+    token_params = {
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=urllib.parse.urlencode(token_params).encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            tokens = json.loads(resp.read().decode("utf-8"))
+
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print("[!] Warning: No refresh token returned. Re-run with prompt=consent.")
+            return False
+
+        token_data = {
+            "refresh_token": refresh_token,
+            "access_token": tokens.get("access_token"),
+            "expires_at": tokens.get("expires_in", 3600),
+        }
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            json.dump(token_data, f, indent=2)
+
+        print(f"\n[SUCCESS] Google Calendar and Gmail tokens saved to:\n  {TOKEN_PATH}")
+        print("\nARYA is now ready to manage your Calendar and Gmail!")
+
+        # Live verification
+        try:
+            from cloud.google_workspace import list_calendar_events_sync, list_emails_sync
+            print("\n" + "-" * 50)
+            print("Verifying Calendar Connection...")
+            cal_res = list_calendar_events_sync(max_results=3)
+            if cal_res.get("success"):
+                print(f"[OK] Calendar Connected! Found {cal_res.get('total', 0)} upcoming events.")
+            else:
+                print(f"[!] Calendar Warning: {cal_res.get('error')}")
+
+            print("\nVerifying Gmail Connection...")
+            gmail_res = list_emails_sync(max_results=3)
+            if gmail_res.get("success"):
+                print(f"[OK] Gmail Connected! Found {gmail_res.get('total', 0)} unread emails.")
+            else:
+                print(f"[!] Gmail Warning: {gmail_res.get('error')}")
+            print("-" * 50)
+        except Exception as ve:
+            print(f"[!] Verification warning: {ve}")
+
+        return True
+    except Exception as e:
+        print(f"[!] Error exchanging code for tokens: {e}")
+        return False
+
+
 def main():
     print("=" * 65)
     print("  ARYA Google Workspace (Calendar + Gmail) Authorization Setup")
@@ -68,13 +131,6 @@ def main():
 
     if not CREDENTIALS_PATH.exists():
         print(f"\n[!] Error: Credentials file not found at:\n    {CREDENTIALS_PATH}")
-        print("\nPlease follow these steps:")
-        print("1. Go to https://console.cloud.google.com/")
-        print("2. Create a project and enable 'Google Calendar API' and 'Gmail API'.")
-        print("3. Go to 'Credentials' -> 'Create Credentials' -> 'OAuth client ID'.")
-        print("   - Application type: Desktop app (or Web application with http://localhost:8080/ redirect)")
-        print("4. Download the JSON file and save it as:")
-        print(f"   {CREDENTIALS_PATH}\n")
         return
 
     with open(CREDENTIALS_PATH, "r", encoding="utf-8") as f:
@@ -85,6 +141,23 @@ def main():
 
     if not client_id or not client_secret:
         print("[!] Invalid credentials file: missing client_id or client_secret.")
+        return
+
+    # Check if code or URL passed via command line
+    manual_code = None
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg in ("--code", "-c") and len(sys.argv) > 2:
+            arg = sys.argv[2]
+        if "code=" in arg:
+            parsed = urllib.parse.parse_qs(urllib.parse.urlparse(arg).query)
+            manual_code = parsed.get("code", [None])[0]
+        else:
+            manual_code = arg.strip()
+
+    if manual_code:
+        print(f"[+] Using provided authorization code: {manual_code[:12]}...")
+        exchange_and_save(manual_code, client_id, client_secret, REDIRECT_URI)
         return
 
     auth_params = {
@@ -105,49 +178,17 @@ def main():
         pass
 
     server = HTTPServer(("localhost", 8080), OAuthCallbackHandler)
+    server.timeout = 1.0
     print("Waiting for authentication callback on http://localhost:8080/ ...")
+    print("(If automatic redirect does not complete, copy the code from the address bar and run:")
+    print(' python scripts/setup_google_auth.py --code "YOUR_CODE")\n')
+
     while not OAuthCallbackHandler.auth_code:
         server.handle_request()
 
     code = OAuthCallbackHandler.auth_code
     print("[+] Authorization code received! Exchanging for tokens...")
-
-    token_params = {
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }
-    req = urllib.request.Request(
-        "https://oauth2.googleapis.com/token",
-        data=urllib.parse.urlencode(token_params).encode("utf-8"),
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(req) as resp:
-            tokens = json.loads(resp.read().decode("utf-8"))
-
-        refresh_token = tokens.get("refresh_token")
-        if not refresh_token:
-            print("[!] Warning: No refresh token returned. Re-run with prompt=consent.")
-            return
-
-        token_data = {
-            "refresh_token": refresh_token,
-            "access_token": tokens.get("access_token"),
-            "expires_at": tokens.get("expires_in", 3600),
-        }
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-            json.dump(token_data, f, indent=2)
-
-        print(f"\n[SUCCESS] Google Calendar and Gmail tokens saved to:\n  {TOKEN_PATH}")
-        print("\nARYA is now ready to manage your Calendar and Gmail!")
-    except Exception as e:
-        print(f"[!] Error exchanging code for tokens: {e}")
+    exchange_and_save(code, client_id, client_secret, REDIRECT_URI)
 
 
 if __name__ == "__main__":
