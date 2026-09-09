@@ -21,7 +21,7 @@ logger = logging.getLogger("TodoistService")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
-TODOIST_API_BASE = "https://api.todoist.com/rest/v2"
+TODOIST_API_BASE = "https://api.todoist.com/api/v1"
 
 
 def get_todoist_token() -> str:
@@ -43,7 +43,7 @@ def _todoist_request(
     method: str = "GET",
     payload: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    """Helper executing HTTP requests to the Todoist REST API v2."""
+    """Helper executing HTTP requests to the Todoist REST API."""
     token = get_todoist_token()
     if not token:
         return {
@@ -90,17 +90,22 @@ def list_tasks_sync(filter_str: Optional[str] = None) -> Dict[str, Any]:
     if isinstance(res, dict) and not res.get("success", True):
         return res
 
+    raw_items = []
+    if isinstance(res, dict) and "results" in res:
+        raw_items = res["results"]
+    elif isinstance(res, list):
+        raw_items = res
+
     tasks = []
-    if isinstance(res, list):
-        for t in res:
-            tasks.append({
-                "id": t.get("id"),
-                "content": t.get("content"),
-                "description": t.get("description", ""),
-                "due": t.get("due", {}).get("string") if t.get("due") else None,
-                "priority": t.get("priority", 1),
-                "url": t.get("url"),
-            })
+    for t in raw_items:
+        tasks.append({
+            "id": t.get("id"),
+            "content": t.get("content"),
+            "description": t.get("description", ""),
+            "due": t.get("due", {}).get("string") if t.get("due") else None,
+            "priority": t.get("priority", 1),
+            "url": t.get("url"),
+        })
 
     return {
         "success": True,
