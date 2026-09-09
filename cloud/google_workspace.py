@@ -30,41 +30,68 @@ CONFIG_DIR = BASE_DIR / "config"
 CREDENTIALS_PATH = CONFIG_DIR / "google_credentials.json"
 TOKEN_PATH = CONFIG_DIR / "google_token.json"
 
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3/calendars/primary"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
-
-def is_google_configured() -> bool:
-    """Check if Google OAuth credentials and refresh token exist."""
-    return (CREDENTIALS_PATH.exists() or bool(os.environ.get("GOOGLE_CLIENT_ID"))) and (
-        TOKEN_PATH.exists() or bool(os.environ.get("GOOGLE_REFRESH_TOKEN"))
-    )
+_in_memory_access_token: Optional[str] = None
+_in_memory_expires_at: float = 0.0
 
 
 def _load_google_credentials() -> Dict[str, str]:
-    """Retrieve client_id, client_secret, and refresh_token."""
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
-    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-    refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
+    """Retrieve client_id, client_secret, and refresh_token from files or environment."""
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN", "").strip()
 
+    # Check if raw JSON was provided via environment variable (e.g. Render / Railway)
+    if raw_creds := os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip():
+        try:
+            cdata = json.loads(raw_creds)
+            installed = cdata.get("installed") or cdata.get("web") or cdata
+            client_id = client_id or installed.get("client_id", "").strip()
+            client_secret = client_secret or installed.get("client_secret", "").strip()
+        except Exception as e:
+            logger.warning(f"Error parsing GOOGLE_CREDENTIALS_JSON: {e}")
+
+    if raw_token := os.environ.get("GOOGLE_TOKEN_JSON", "").strip():
+        try:
+            tdata = json.loads(raw_token)
+            refresh_token = refresh_token or tdata.get("refresh_token", "").strip()
+        except Exception as e:
+            logger.warning(f"Error parsing GOOGLE_TOKEN_JSON: {e}")
+
+    # Check credentials file
     if CREDENTIALS_PATH.exists():
         try:
             with open(CREDENTIALS_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 installed = data.get("installed") or data.get("web") or data
-                client_id = client_id or installed.get("client_id", "")
-                client_secret = client_secret or installed.get("client_secret", "")
+                client_id = client_id or installed.get("client_id", "").strip()
+                client_secret = client_secret or installed.get("client_secret", "").strip()
         except Exception as e:
             logger.warning(f"Error reading {CREDENTIALS_PATH}: {e}")
 
+    # Check token file
     if TOKEN_PATH.exists():
         try:
             with open(TOKEN_PATH, "r", encoding="utf-8") as f:
                 tdata = json.load(f)
-                refresh_token = refresh_token or tdata.get("refresh_token", "")
+                refresh_token = refresh_token or tdata.get("refresh_token", "").strip()
         except Exception as e:
             logger.warning(f"Error reading {TOKEN_PATH}: {e}")
+
+    # Check api_keys.json fallback
+    if API_CONFIG_PATH.exists():
+        try:
+            with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+                adata = json.load(f)
+                client_id = client_id or adata.get("google_client_id", "").strip()
+                client_secret = client_secret or adata.get("google_client_secret", "").strip()
+                refresh_token = refresh_token or adata.get("google_refresh_token", "").strip()
+        except Exception:
+            pass
 
     return {
         "client_id": client_id,
@@ -73,11 +100,20 @@ def _load_google_credentials() -> Dict[str, str]:
     }
 
 
+def is_google_configured() -> bool:
+    """Check if Google OAuth credentials and refresh token exist."""
+    creds = _load_google_credentials()
+    return bool(creds.get("client_id") and creds.get("client_secret") and creds.get("refresh_token"))
+
+
 def get_google_access_token() -> Optional[str]:
     """
     Returns a valid access token.
     Automatically refreshes the token using the refresh_token if expired.
+    Uses in-memory cache and file cache.
     """
+    global _in_memory_access_token, _in_memory_expires_at
+
     creds = _load_google_credentials()
     client_id = creds["client_id"]
     client_secret = creds["client_secret"]
@@ -86,21 +122,24 @@ def get_google_access_token() -> Optional[str]:
     if not client_id or not client_secret or not refresh_token:
         return None
 
+    # Check in-memory cache first
+    now = time.time()
+    if _in_memory_access_token and now < (_in_memory_expires_at - 60):
+        return _in_memory_access_token
+
     # Check cached access token in TOKEN_PATH
-    cached_token = None
-    expires_at = 0
     if TOKEN_PATH.exists():
         try:
             with open(TOKEN_PATH, "r", encoding="utf-8") as f:
                 tdata = json.load(f)
                 cached_token = tdata.get("access_token")
                 expires_at = tdata.get("expires_at", 0)
+                if cached_token and now < (expires_at - 60):
+                    _in_memory_access_token = cached_token
+                    _in_memory_expires_at = expires_at
+                    return cached_token
         except Exception:
             pass
-
-    # If cached token is valid for at least 60 more seconds, reuse it
-    if cached_token and time.time() < (expires_at - 60):
-        return cached_token
 
     # Refresh the token
     logger.info("Refreshing Google OAuth access token...")
@@ -125,7 +164,11 @@ def get_google_access_token() -> Optional[str]:
         expires_in = data.get("expires_in", 3600)
         new_expires_at = time.time() + expires_in
 
-        # Update TOKEN_PATH
+        # Cache in memory
+        _in_memory_access_token = new_access_token
+        _in_memory_expires_at = new_expires_at
+
+        # Try updating TOKEN_PATH if possible
         try:
             CONFIG_DIR.mkdir(parents=True, exist_ok=True)
             token_dict = {
@@ -136,7 +179,7 @@ def get_google_access_token() -> Optional[str]:
             with open(TOKEN_PATH, "w", encoding="utf-8") as f:
                 json.dump(token_dict, f, indent=2)
         except Exception as err:
-            logger.warning(f"Could not persist refreshed token to {TOKEN_PATH}: {err}")
+            logger.debug(f"Note: Could not persist token to disk: {err}")
 
         return new_access_token
     except Exception as e:
