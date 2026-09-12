@@ -353,11 +353,11 @@ class BrahmaGateway:
     def _build_app(self) -> FastAPI:
         app = FastAPI(docs_url=None, redoc_url=None)
 
-        @app.get("/health")
+        @app.api_route("/health", methods=["GET", "HEAD"])
         async def health():
             return {"ok": True, "running": self.is_running(), "host": self.config.host, "port": self.config.port}
 
-        @app.get("/gateway/info")
+        @app.api_route("/gateway/info", methods=["GET", "HEAD"])
         async def info():
             return {
                 "ok": True,

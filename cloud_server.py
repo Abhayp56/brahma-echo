@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Response
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -150,6 +150,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def head_request_middleware(request: Request, call_next):
+    """
+    Ensures uptime monitors (e.g. UptimeRobot) sending HEAD requests across any route
+    receive standard 200 OK responses with empty bodies rather than 405 Method Not Allowed.
+    """
+    is_head = request.method == "HEAD"
+    if is_head:
+        request.scope["method"] = "GET"
+    response = await call_next(request)
+    if is_head:
+        return Response(
+            content=b"",
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type,
+        )
+    return response
+
 dispatcher = WebSocketToolDispatcher()
 brain: Optional[CloudBrain] = None
 server_config = load_server_config()
@@ -231,7 +251,7 @@ async def on_startup():
         logger.warning(f"Could not start WhatsApp Gateway: {wa_err}")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def get_web_ui():
     """Serves the browser-based Web Voice & Task interface."""
     ui_path = BASE_DIR / "cloud" / "web_ui.html"
@@ -240,7 +260,26 @@ async def get_web_ui():
     return HTMLResponse(content="<h1>ARYA Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
 
 
-@app.get("/api/status")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
+async def health_check():
+    """
+    Lightweight health check endpoint specifically designed for uptime monitors (e.g. UptimeRobot)
+    to keep the Render container alive 24/7. Responds to both GET and HEAD requests with 200 OK.
+    """
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "online": True,
+            "service": "Brahma Cloud Brain",
+            "gemini_live_connected": brain.session is not None if brain else False,
+            "laptop_connected": dispatcher.is_connected,
+        },
+        status_code=200,
+    )
+
+
+@app.api_route("/api/status", methods=["GET", "HEAD"])
 async def get_status():
     """System health check and connection status."""
     return {
