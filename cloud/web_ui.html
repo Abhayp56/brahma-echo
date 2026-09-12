@@ -1248,6 +1248,7 @@
                 audioPlaybackTimer = setTimeout(onAssistantFinishedSpeaking, 1000);
               }
               hasReceivedAudioThisTurn = false;
+            }
           } else if (msg.type === 'phone_status') {
             updatePhoneUI(msg);
           } else if (msg.type === 'whatsapp_status') {
@@ -1834,17 +1835,20 @@
     let isPhoneConnected = false;
     let activePhoneCallId = null;
 
-    function openPhoneModal() {
-      phoneModal.classList.add('open');
+    window.openPhoneModal = function() {
+      if (phoneModal) phoneModal.classList.add('open');
       checkPhoneStatus();
       if (!isPhoneConnected) {
         refreshPhoneQr();
       }
-    }
+    };
 
-    function closePhoneModal() {
-      phoneModal.classList.remove('open');
-    }
+    window.closePhoneModal = function() {
+      if (phoneModal) phoneModal.classList.remove('open');
+    };
+
+    if (openPhoneBtn) openPhoneBtn.addEventListener('click', window.openPhoneModal);
+    if (closePhoneBtn) closePhoneBtn.addEventListener('click', window.closePhoneModal);
 
     function updatePhoneUI(data) {
       isPhoneConnected = !!data.connected;

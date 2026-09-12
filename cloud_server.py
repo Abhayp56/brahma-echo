@@ -167,10 +167,12 @@ async def head_request_middleware(request: Request, call_next):
         request.scope["method"] = "GET"
     response = await call_next(request)
     if is_head:
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
         return Response(
             content=b"",
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=headers,
             media_type=response.media_type,
         )
     return response
