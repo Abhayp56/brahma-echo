@@ -503,8 +503,9 @@
       animation: fadeIn 0.2s ease;
     }
 
-    .modal-overlay.active {
-      display: flex;
+    .modal-overlay.active,
+    .modal-overlay.open {
+      display: flex !important;
     }
 
     .modal-card {
@@ -919,7 +920,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h2>📱 Android Phone Companion <span class="modal-badge" id="phoneModalBadge">Disconnected</span></h2>
-        <button class="modal-close" onclick="closePhoneModal()">&times;</button>
+        <button class="modal-close" id="closePhoneBtn" onclick="closePhoneModal()">&times;</button>
       </div>
       <div class="modal-body">
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
@@ -1821,6 +1822,8 @@
     // Phone Companion Management Logic (Direct Cloud Connection)
     // =========================================================================
     const phoneModal = document.getElementById('phoneModal');
+    const openPhoneBtn = document.getElementById('openPhoneBtn');
+    const closePhoneBtn = document.getElementById('closePhoneBtn');
     const phoneNavDot = document.getElementById('phoneNavDot');
     const phoneModalBadge = document.getElementById('phoneModalBadge');
     const phoneQrContainer = document.getElementById('phoneQrContainer');
@@ -1836,7 +1839,12 @@
     let activePhoneCallId = null;
 
     window.openPhoneModal = function() {
-      if (phoneModal) phoneModal.classList.add('open');
+      const modal = document.getElementById('phoneModal');
+      if (modal) {
+        modal.classList.add('active');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+      }
       checkPhoneStatus();
       if (!isPhoneConnected) {
         refreshPhoneQr();
@@ -1844,11 +1852,21 @@
     };
 
     window.closePhoneModal = function() {
-      if (phoneModal) phoneModal.classList.remove('open');
+      const modal = document.getElementById('phoneModal');
+      if (modal) {
+        modal.classList.remove('active');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+      }
     };
 
     if (openPhoneBtn) openPhoneBtn.addEventListener('click', window.openPhoneModal);
     if (closePhoneBtn) closePhoneBtn.addEventListener('click', window.closePhoneModal);
+    if (phoneModal) {
+      phoneModal.addEventListener('click', (e) => {
+        if (e.target === phoneModal) window.closePhoneModal();
+      });
+    }
 
     function updatePhoneUI(data) {
       isPhoneConnected = !!data.connected;
