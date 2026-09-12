@@ -989,5 +989,27 @@ TOOL_DECLARATIONS = [
             },
             "required": ["action"]
         }
+    },
+    {
+        "name": "call_user_phone",
+        "description": (
+            "Initiates a real-time two-way voice call to the user's Android phone using Brahma Connect. "
+            "Use this when you need to urgently alert the user, deliver a morning/evening briefing, "
+            "or when the user asks you to 'call my phone', 'ring my mobile', or 'give me a call'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "reason": {
+                    "type": "STRING",
+                    "description": "Short explanation or topic for the call (e.g. 'Morning Briefing', 'Server Alert', 'VIP message from Mom')."
+                },
+                "device_id": {
+                    "type": "STRING",
+                    "description": "Optional specific Android device ID if user has multiple paired devices."
+                }
+            },
+            "required": ["reason"]
+        }
     }
 ]

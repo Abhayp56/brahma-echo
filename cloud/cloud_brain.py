@@ -109,12 +109,14 @@ class CloudBrain:
     def __init__(
         self,
         tool_dispatcher: Optional[RemoteToolDispatcher] = None,
+        phone_hub: Optional[Any] = None,
         on_audio_out: Optional[Callable[[bytes], None]] = None,
         on_transcript: Optional[Callable[[str, str], None]] = None,
         on_turn_complete: Optional[Callable[[], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
     ):
         self.dispatcher = tool_dispatcher
+        self.phone_hub = phone_hub
         self.on_audio_out = on_audio_out
         self.on_transcript = on_transcript
         self.on_turn_complete = on_turn_complete
@@ -269,6 +271,48 @@ class CloudBrain:
                 name=name,
                 response={"results": results},
             )
+
+        # 1.4 Native Direct Voice Call to User's Phone (Direct Cloud Link)
+        if name == "call_user_phone":
+            reason = args.get("reason", "Voice call from ARYA")
+            try:
+                # 1. Direct Cloud Phone connection (primary - no laptop mediator)
+                if self.phone_hub and self.phone_hub.is_connected:
+                    self.log(f"📞 Initiating direct cloud VoIP call to phone: reason='{reason}'")
+                    call_res = await self.phone_hub.call_phone(caller_name="ARYA", reason=reason)
+                    if call_res.get("success"):
+                        msg = f"Calling your phone directly now for '{reason}'. Please answer the incoming call on your screen."
+                    else:
+                        msg = f"Could not call phone: {call_res.get('error', 'Call failed')}."
+                    return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+
+                # 2. Fallback to laptop worker if laptop bridge is running
+                elif self.dispatcher and self.dispatcher.is_connected:
+                    self.log(f"📞 Forwarding call_user_phone to laptop worker: reason='{reason}'")
+                    exec_result = await self.dispatcher.execute_on_laptop(name, args)
+                    res_raw = exec_result.get("result")
+                    if isinstance(res_raw, str):
+                        try:
+                            res_data = json.loads(res_raw)
+                        except Exception:
+                            res_data = {"success": exec_result.get("success", False), "result": res_raw}
+                    elif isinstance(res_raw, dict):
+                        res_data = res_raw
+                    else:
+                        res_data = exec_result
+
+                    if res_data.get("success"):
+                        msg = f"Calling your phone now for '{reason}'. Please answer the incoming call on your screen."
+                    else:
+                        err = res_data.get("error") or exec_result.get("error") or "Device offline or not paired"
+                        msg = f"Could not call phone: {err}."
+                    return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+
+                else:
+                    msg = "Your phone is currently not connected directly to the cloud server. Please open the Web AI dashboard, scan the Phone QR code with Brahma Connect, and try again."
+                    return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+            except Exception as call_err:
+                return types.FunctionResponse(id=call_id, name=name, response={"error": f"Failed to call phone: {call_err}"})
 
         # 1.5 Server-side WhatsApp controller
         if name == "whatsapp_control" or (name == "send_message" and "whatsapp" in str(args.get("platform", "")).lower()):

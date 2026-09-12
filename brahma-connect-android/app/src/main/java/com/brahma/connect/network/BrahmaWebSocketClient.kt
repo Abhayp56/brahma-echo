@@ -27,6 +27,23 @@ class BrahmaWebSocketClient(
     private val storage: PairingStorage,
     private val commandHandler: DeviceCommandHandler,
 ) {
+    private val callManager = com.brahma.connect.call.CallManager.getInstance(context)
+
+    init {
+        callManager.onSendCallAnswer = { callId ->
+            send(BrahmaProtocol.callAnswer(callId))
+        }
+        callManager.onSendCallReject = { callId ->
+            send(BrahmaProtocol.callReject(callId))
+        }
+        callManager.onSendCallEnd = { callId ->
+            send(BrahmaProtocol.callEnd(callId))
+        }
+        callManager.onSendCallAudio = { callId, base64Chunk ->
+            send(BrahmaProtocol.callAudio(callId, base64Chunk))
+        }
+    }
+
     private val client = OkHttpClient.Builder()
         .retryOnConnectionFailure(true)
         .pingInterval(30, TimeUnit.SECONDS)
@@ -58,8 +75,22 @@ class BrahmaWebSocketClient(
         AgentStateStore.setStatus("Connecting to ${endpoint.name}")
 
         socket?.close(1000, "Reconnecting")
+        val wsUrl = when {
+            endpoint.url.isNotBlank() -> endpoint.url
+            offer?.url?.isNotBlank() == true -> offer.url
+            credential?.gatewayUrl?.isNotBlank() == true -> credential.gatewayUrl
+            endpoint.ssl || endpoint.port == 443 || endpoint.host.contains("onrender.com") -> {
+                val p = endpoint.path.ifBlank { "/ws/phone" }
+                "wss://${endpoint.host}$p"
+            }
+            else -> {
+                val p = endpoint.path.ifBlank { "/ws" }
+                "ws://${endpoint.host}:${endpoint.port}$p"
+            }
+        }
+        android.util.Log.i("BrahmaWebSocketClient", "Connecting WebSocket to: $wsUrl")
         socket = client.newWebSocket(
-            Request.Builder().url("ws://${endpoint.host}:${endpoint.port}/ws").build(),
+            Request.Builder().url(wsUrl).build(),
             BrahmaSocketListener(),
         )
     }
@@ -180,12 +211,16 @@ class BrahmaWebSocketClient(
         val secret = payload.optString("device_secret")
         val deviceId = device.optString("device_id")
         val deviceName = device.optString("name", android.os.Build.MODEL ?: "Android")
+        val isCloud = currentEndpoint?.ssl == true || currentOffer?.ssl == true || currentEndpoint?.host?.contains("onrender.com") == true || currentOffer?.url?.contains("onrender.com") == true
+        val credUrl = currentOffer?.url?.ifBlank { null } ?: currentEndpoint?.url?.ifBlank { null } ?: if (isCloud) "wss://${currentEndpoint?.host}/ws/phone" else ""
         val credential = DeviceCredential(
             deviceId = deviceId,
             deviceSecret = secret,
             deviceName = deviceName,
             gatewayHost = currentEndpoint?.host.orEmpty(),
-            gatewayPort = currentEndpoint?.port ?: 8765,
+            gatewayPort = currentEndpoint?.port ?: (if (isCloud) 443 else 8765),
+            gatewayUrl = credUrl,
+            ssl = isCloud,
         )
         storage.saveCredential(credential)
         currentCredential = credential
@@ -239,6 +274,28 @@ class BrahmaWebSocketClient(
                         val timestamp = System.currentTimeMillis()
                         val msg = ChatMessage(msgId, role, text, timestamp, "Sent")
                         AgentStateStore.addChatMessage(msg)
+                    }
+                    BrahmaProtocol.CALL_OFFER -> {
+                        val payload = root.optJSONObject("payload") ?: return
+                        val offer = com.brahma.connect.core.CallOfferPayload(
+                            callId = payload.optString("call_id", root.optString("request_id")),
+                            callerName = payload.optString("caller_name", "ARYA"),
+                            reason = payload.optString("reason", "Voice Call"),
+                            timestamp = payload.optLong("timestamp", System.currentTimeMillis())
+                        )
+                        callManager.handleIncomingCallOffer(offer)
+                    }
+                    BrahmaProtocol.CALL_END -> {
+                        val payload = root.optJSONObject("payload")
+                        val callId = payload?.optString("call_id") ?: ""
+                        callManager.onCallEndedByRemote(callId)
+                    }
+                    BrahmaProtocol.CALL_AUDIO -> {
+                        val payload = root.optJSONObject("payload") ?: return
+                        val audioData = payload.optString("data", "")
+                        if (audioData.isNotEmpty()) {
+                            callManager.handleIncomingAudioChunk(audioData)
+                        }
                     }
                 }
             }.onFailure {

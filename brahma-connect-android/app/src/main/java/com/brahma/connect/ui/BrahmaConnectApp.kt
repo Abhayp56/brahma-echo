@@ -249,7 +249,18 @@ fun BrahmaConnectApp(
                             scanError = null
                             storage.saveGatewayHint(offer)
                             AgentStateStore.setPairingOffer(offer)
-                            AgentStateStore.setGateway(GatewayEndpoint(name = "Brahma PC", host = offer.host, port = offer.port))
+                            val isCloud = offer.ssl || offer.url.contains("onrender.com")
+                            val endpointName = if (isCloud) "ARYA Cloud AI" else "Brahma PC"
+                            AgentStateStore.setGateway(
+                                GatewayEndpoint(
+                                    name = endpointName,
+                                    host = offer.host,
+                                    port = offer.port,
+                                    ssl = offer.ssl,
+                                    path = offer.path,
+                                    url = offer.url,
+                                )
+                            )
                             AgentStateStore.setStatus("Pairing payload loaded")
                             navController.popBackStack()
                         }

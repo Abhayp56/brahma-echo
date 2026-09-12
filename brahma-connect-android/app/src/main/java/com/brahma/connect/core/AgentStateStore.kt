@@ -29,6 +29,21 @@ object AgentStateStore {
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
 
+    private val _callState = MutableStateFlow(CallState.IDLE)
+    val callState: StateFlow<CallState> = _callState.asStateFlow()
+
+    private val _activeCallOffer = MutableStateFlow<CallOfferPayload?>(null)
+    val activeCallOffer: StateFlow<CallOfferPayload?> = _activeCallOffer.asStateFlow()
+
+    fun setCallState(state: CallState, offer: CallOfferPayload? = null) {
+        _callState.value = state
+        if (state == CallState.IDLE || state == CallState.ENDED) {
+            _activeCallOffer.value = null
+        } else if (offer != null) {
+            _activeCallOffer.value = offer
+        }
+    }
+
     fun setConnectionState(state: ConnectionState) {
         _connectionState.value = state
     }
@@ -80,5 +95,6 @@ object BrahmaConnectCapabilities {
         "apps",
         "open_url",
         "wifi_state",
+        "voice_call",
     )
 }

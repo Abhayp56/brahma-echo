@@ -14,13 +14,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import io
 import json
 import logging
 import os
+import secrets
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import qrcode
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Response
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -33,6 +37,7 @@ from core.distributed.protocol import (
     parse_message,
     new_request_id,
 )
+from brahma_connect.gateway.protocol import now_iso
 from cloud.cloud_brain import CloudBrain, RemoteToolDispatcher
 from memory.memory_manager import load_memory, update_memory, forget
 from memory.supabase_memory import is_supabase_configured
@@ -170,17 +175,158 @@ async def head_request_middleware(request: Request, call_next):
         )
     return response
 
+class CloudPhoneHub:
+    """
+    Direct Cloud Gateway for Android Companion App.
+    Enables ARYA to connect directly to the user's phone over WSS (no laptop mediator).
+    """
+
+    def __init__(self):
+        self.phone_ws: Optional[WebSocket] = None
+        self.phone_info: Dict[str, Any] = {}
+        self.active_calls: Dict[str, Dict[str, Any]] = {}
+        self.pairing_offers: Dict[str, Dict[str, Any]] = {}
+        self.device_secret: str = secrets.token_hex(24)
+        self.device_id: str = "android_companion_primary"
+
+    @property
+    def is_connected(self) -> bool:
+        return self.phone_ws is not None
+
+    def create_pairing_offer(self, host: str = "brahma-cloud-brain.onrender.com") -> Dict[str, Any]:
+        token = secrets.token_hex(16)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = time.time()
+        is_local = "127.0.0.1" in host or "localhost" in host
+        scheme = "ws" if is_local else "wss"
+        port = 8000 if is_local else 443
+        offer = {
+            "service": "BrahmaCloud",
+            "url": f"{scheme}://{host}/ws/phone",
+            "host": host,
+            "port": port,
+            "ssl": not is_local,
+            "path": "/ws/phone",
+            "pairing_token": token,
+            "pairing_code": code,
+            "expires": 600,
+            "created_at": now_iso(),
+        }
+        self.pairing_offers[token] = offer
+        self.pairing_offers[code] = offer
+        return offer
+
+    def generate_qr_data_url(self, host: str = "brahma-cloud-brain.onrender.com") -> str:
+        offer = self.create_pairing_offer(host)
+        payload_str = json.dumps(offer)
+        try:
+            qr = qrcode.QRCode(box_size=8, border=2)
+            qr.add_data(payload_str)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            return f"data:image/png;base64,{b64}"
+        except Exception as e:
+            logger.warning(f"Failed to generate Phone QR code: {e}")
+            return ""
+
+    def register_phone(self, ws: WebSocket, info: Dict[str, Any]):
+        self.phone_ws = ws
+        self.phone_info = dict(info or {})
+        self.phone_info["connected_at"] = time.time()
+        logger.info(f"📱 Phone connected directly to Cloud Server: {self.phone_info.get('name', 'Android Phone')}")
+
+    def unregister_phone(self):
+        logger.info("📱 Phone disconnected from Cloud Server.")
+        self.phone_ws = None
+        self.phone_info = {}
+        self.active_calls.clear()
+
+    async def call_phone(self, caller_name: str = "ARYA", reason: str = "Voice call from ARYA") -> Dict[str, Any]:
+        if not self.is_connected:
+            return {"success": False, "error": "Phone is not connected directly to the cloud server."}
+
+        call_id = new_request_id()
+        msg = {
+            "type": "call_offer",
+            "request_id": call_id,
+            "timestamp": now_iso(),
+            "payload": {
+                "call_id": call_id,
+                "caller_name": caller_name,
+                "reason": reason,
+            },
+        }
+        try:
+            await self.phone_ws.send_text(json.dumps(msg))
+            self.active_calls[call_id] = {
+                "call_id": call_id,
+                "caller": caller_name,
+                "reason": reason,
+                "status": "ringing",
+                "started_at": time.time(),
+            }
+            logger.info(f"📞 CALL_OFFER sent directly to phone for '{reason}' (call_id={call_id})")
+            return {"success": True, "call_id": call_id}
+        except Exception as exc:
+            logger.error(f"Failed to send call_offer: {exc}")
+            return {"success": False, "error": str(exc)}
+
+    async def end_call(self, call_id: Optional[str] = None) -> Dict[str, Any]:
+        target_id = call_id
+        if not target_id and self.active_calls:
+            target_id = next(iter(self.active_calls.keys()))
+        if not target_id:
+            return {"success": True}
+
+        self.active_calls.pop(target_id, None)
+        if self.is_connected:
+            try:
+                msg = {
+                    "type": "call_end",
+                    "request_id": new_request_id(),
+                    "timestamp": now_iso(),
+                    "payload": {"call_id": target_id},
+                }
+                await self.phone_ws.send_text(json.dumps(msg))
+            except Exception:
+                pass
+        return {"success": True}
+
+    async def forward_audio_to_phone(self, b64_pcm: str):
+        if not self.is_connected or not self.active_calls:
+            return
+        active_call = next((cid for cid, c in self.active_calls.items() if c.get("status") == "active"), None)
+        if not active_call:
+            return
+        msg = {
+            "type": "call_audio",
+            "request_id": new_request_id(),
+            "timestamp": now_iso(),
+            "payload": {"call_id": active_call, "data": b64_pcm},
+        }
+        try:
+            await self.phone_ws.send_text(json.dumps(msg))
+        except Exception:
+            pass
+
+
 dispatcher = WebSocketToolDispatcher()
+phone_hub = CloudPhoneHub()
 brain: Optional[CloudBrain] = None
 server_config = load_server_config()
 web_clients: set[WebSocket] = set()
 
 
 def broadcast_audio_to_web(pcm_chunk: bytes):
-    """Sends synthesized 24kHz audio from Gemini Live directly to connected browser clients."""
+    """Sends synthesized 24kHz audio from Gemini Live directly to connected browser clients and active phone calls."""
+    b64_data = base64.b64encode(pcm_chunk).decode("ascii")
+    if phone_hub.is_connected and phone_hub.active_calls:
+        asyncio.create_task(phone_hub.forward_audio_to_phone(b64_data))
     if not web_clients:
         return
-    b64_data = base64.b64encode(pcm_chunk).decode("ascii")
     payload = json.dumps({"type": "audio_chunk", "data": b64_data})
     for client in list(web_clients):
         try:
@@ -209,6 +355,22 @@ def broadcast_turn_complete_to_web():
             pass
 
 
+def broadcast_phone_status_to_web():
+    """Broadcasts phone connection and call status to all connected web clients."""
+    info = {
+        "type": "phone_status",
+        "connected": phone_hub.is_connected,
+        "phone_info": phone_hub.phone_info if phone_hub.is_connected else None,
+        "active_call": next(iter(phone_hub.active_calls.values()), None) if phone_hub.active_calls else None,
+    }
+    msg = json.dumps(info)
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(msg))
+        except Exception:
+            pass
+
+
 main_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -233,6 +395,7 @@ async def on_startup():
     logger.info("Initializing ARYA Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
+        phone_hub=phone_hub,
         on_audio_out=broadcast_audio_to_web,
         on_transcript=broadcast_transcript_to_web,
         on_turn_complete=broadcast_turn_complete_to_web,
@@ -561,6 +724,158 @@ async def api_create_todoist_task(payload: Dict[str, Any]):
     """Direct REST endpoint to create a Todoist task."""
     from cloud.todoist_service import execute_todoist_tool
     return await execute_todoist_tool("add_task", payload)
+
+
+# =========================================================================
+# Android Phone Companion Direct Cloud Endpoints (No Laptop Required)
+# =========================================================================
+
+@app.get("/api/phone/status")
+async def get_phone_status():
+    """Returns the direct connection and active call status of the Android Phone Companion."""
+    return {
+        "connected": phone_hub.is_connected,
+        "phone_info": phone_hub.phone_info if phone_hub.is_connected else None,
+        "active_calls": list(phone_hub.active_calls.values()),
+    }
+
+
+@app.get("/api/phone/qr")
+async def get_phone_qr(request: Request):
+    """Generates a dynamic QR code for pairing the Android app directly with this Cloud Server."""
+    host = request.headers.get("host", "brahma-cloud-brain.onrender.com")
+    qr_data = phone_hub.generate_qr_data_url(host)
+    return {
+        "success": True,
+        "qr_data_url": qr_data,
+        "host": host,
+        "connected": phone_hub.is_connected,
+    }
+
+
+@app.post("/api/phone/call")
+async def api_trigger_phone_call(data: Dict[str, Any] | None = None):
+    """Triggers an incoming VoIP phone call directly from the Cloud Brain to the Android Phone."""
+    params = data or {}
+    caller = str(params.get("caller") or "ARYA").strip()
+    reason = str(params.get("reason") or "Voice Call from ARYA Web AI").strip()
+    return await phone_hub.call_phone(caller_name=caller, reason=reason)
+
+
+@app.post("/api/phone/end-call")
+async def api_end_phone_call():
+    """Hangs up any active phone call."""
+    return await phone_hub.end_call()
+
+
+@app.websocket("/ws/phone")
+async def websocket_phone_companion(websocket: WebSocket):
+    """
+    Direct WebSocket connection for the Android Phone Companion App.
+    Eliminates laptop mediator — connects phone directly to the Cloud Brain.
+    """
+    await websocket.accept()
+    logger.info("📱 New incoming phone connection on /ws/phone")
+
+    phone_registered = False
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            data = json.loads(raw)
+            msg_type = data.get("type", "")
+            req_id = data.get("request_id", "")
+            payload = data.get("payload", {})
+
+            # 1. Hello / Discover
+            if msg_type == "hello":
+                reply = {
+                    "type": "pair_request",
+                    "request_id": req_id,
+                    "timestamp": now_iso(),
+                    "payload": {"message": "Please send pair_request with pairing_token or authenticate with credential."},
+                }
+                await websocket.send_text(json.dumps(reply))
+
+            # 2. Pair Request
+            elif msg_type == "pair_request":
+                device_name = payload.get("device_name") or payload.get("name") or "Android Phone"
+                reply = {
+                    "type": "pair_approved",
+                    "request_id": req_id,
+                    "timestamp": now_iso(),
+                    "payload": {
+                        "device": {
+                            "device_id": phone_hub.device_id,
+                            "name": device_name,
+                            "platform": "android",
+                        },
+                        "device_secret": phone_hub.device_secret,
+                    },
+                }
+                await websocket.send_text(json.dumps(reply))
+                logger.info(f"📱 Approved pairing request for device: {device_name}")
+
+            # 3. Authenticate
+            elif msg_type == "authenticate":
+                device_name = payload.get("device_name") or payload.get("name") or "Android Phone"
+                phone_hub.register_phone(websocket, payload)
+                phone_registered = True
+                reply = {
+                    "type": "device_online",
+                    "request_id": req_id,
+                    "timestamp": now_iso(),
+                    "payload": {"status": "online", "device_id": phone_hub.device_id},
+                }
+                await websocket.send_text(json.dumps(reply))
+                broadcast_phone_status_to_web()
+
+            # 4. Call Answered
+            elif msg_type == "call_answer":
+                call_id = payload.get("call_id")
+                if call_id and call_id in phone_hub.active_calls:
+                    phone_hub.active_calls[call_id]["status"] = "active"
+                    logger.info(f"📞 Android call {call_id} is now ACTIVE.")
+                    broadcast_phone_status_to_web()
+
+            # 5. Call Rejected
+            elif msg_type == "call_reject":
+                call_id = payload.get("call_id")
+                phone_hub.active_calls.pop(call_id, None)
+                logger.info(f"📞 Android call {call_id} was DECLINED by user.")
+                broadcast_phone_status_to_web()
+
+            # 6. Call Ended
+            elif msg_type == "call_end":
+                call_id = payload.get("call_id")
+                phone_hub.active_calls.pop(call_id, None)
+                logger.info(f"📞 Android call {call_id} ENDED.")
+                broadcast_phone_status_to_web()
+
+            # 7. Incoming Audio from Phone Microphone
+            elif msg_type == "call_audio":
+                b64_data = payload.get("data", "")
+                if b64_data and brain:
+                    pcm_bytes = base64.b64decode(b64_data)
+                    await brain.handle_incoming_audio(pcm_bytes)
+
+            # 8. Ping / Pong
+            elif msg_type == "ping":
+                reply = {
+                    "type": "pong",
+                    "request_id": req_id,
+                    "timestamp": now_iso(),
+                    "payload": {"status": "ok"},
+                }
+                await websocket.send_text(json.dumps(reply))
+
+    except WebSocketDisconnect:
+        logger.info("📱 Phone WebSocket disconnected.")
+    except Exception as exc:
+        logger.warning(f"Phone WebSocket error: {exc}")
+    finally:
+        if phone_registered:
+            phone_hub.unregister_phone()
+            broadcast_phone_status_to_web()
 
 
 @app.websocket("/ws/web")

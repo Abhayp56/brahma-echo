@@ -17,6 +17,9 @@ data class GatewayEndpoint(
     val host: String,
     val port: Int,
     val online: Boolean = true,
+    val ssl: Boolean = false,
+    val path: String = "/ws",
+    val url: String = "",
 )
 
 data class PairingOffer(
@@ -27,17 +30,29 @@ data class PairingOffer(
     val pairingCode: String,
     val expiresInSeconds: Int,
     val createdAt: String,
+    val ssl: Boolean = false,
+    val path: String = "/ws",
+    val url: String = "",
 ) {
     companion object {
         fun fromJson(json: JSONObject): PairingOffer {
+            val url = json.optString("url")
+            val isSsl = json.optBoolean("ssl", false) || url.startsWith("wss://")
+            val path = json.optString("path", if (url.contains("/ws/phone")) "/ws/phone" else "/ws")
+            val host = json.optString("host")
+            val defaultPort = if (isSsl) 443 else 8765
+            val port = json.optInt("port", defaultPort).let { if (it <= 0) defaultPort else it }
             return PairingOffer(
-                service = json.optString("service"),
-                host = json.optString("host"),
-                port = json.optInt("port"),
+                service = json.optString("service", "Brahma"),
+                host = host,
+                port = port,
                 pairingToken = json.optString("pairing_token"),
                 pairingCode = json.optString("pairing_code"),
-                expiresInSeconds = json.optInt("expires"),
+                expiresInSeconds = json.optInt("expires", 600),
                 createdAt = json.optString("created_at"),
+                ssl = isSsl,
+                path = path,
+                url = url,
             )
         }
     }
@@ -50,6 +65,9 @@ data class PairingOffer(
         .put("pairing_code", pairingCode)
         .put("expires", expiresInSeconds)
         .put("created_at", createdAt)
+        .put("ssl", ssl)
+        .put("path", path)
+        .put("url", url)
 }
 
 data class DeviceCredential(
@@ -59,6 +77,8 @@ data class DeviceCredential(
     val gatewayHost: String,
     val gatewayPort: Int,
     val pairedAt: String = Instant.now().toString(),
+    val gatewayUrl: String = "",
+    val ssl: Boolean = false,
 )
 
 data class DeviceSnapshot(
@@ -94,6 +114,20 @@ data class ChatMessage(
     val text: String,
     val timestamp: Long,
     val status: String
+)
+
+enum class CallState {
+    IDLE,
+    RINGING,
+    ACTIVE,
+    ENDED,
+}
+
+data class CallOfferPayload(
+    val callId: String,
+    val callerName: String = "ARYA",
+    val reason: String = "Voice Call",
+    val timestamp: Long = System.currentTimeMillis(),
 )
 
 data class CommandResult(
@@ -134,6 +168,13 @@ object BrahmaProtocol {
     const val PONG = "pong"
     const val CHAT_MESSAGE = "chat_message"
 
+    // Voice Calling Protocol
+    const val CALL_OFFER = "call_offer"
+    const val CALL_ANSWER = "call_answer"
+    const val CALL_REJECT = "call_reject"
+    const val CALL_END = "call_end"
+    const val CALL_AUDIO = "call_audio"
+
     fun envelope(type: String, payload: JSONObject = JSONObject(), requestId: String = UUID.randomUUID().toString().replace("-", "")): JSONObject {
         return JSONObject()
             .put("type", type)
@@ -159,6 +200,26 @@ object BrahmaProtocol {
     fun chatMessage(text: String): JSONObject = envelope(
         CHAT_MESSAGE,
         JSONObject().put("text", text)
+    )
+
+    fun callAnswer(callId: String): JSONObject = envelope(
+        CALL_ANSWER,
+        JSONObject().put("call_id", callId)
+    )
+
+    fun callReject(callId: String, reason: String = "declined"): JSONObject = envelope(
+        CALL_REJECT,
+        JSONObject().put("call_id", callId).put("reason", reason)
+    )
+
+    fun callEnd(callId: String): JSONObject = envelope(
+        CALL_END,
+        JSONObject().put("call_id", callId)
+    )
+
+    fun callAudio(callId: String, dataBase64: String): JSONObject = envelope(
+        CALL_AUDIO,
+        JSONObject().put("call_id", callId).put("data", dataBase64)
     )
 }
 

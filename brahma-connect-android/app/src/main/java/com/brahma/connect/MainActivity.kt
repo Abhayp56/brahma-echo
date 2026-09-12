@@ -38,14 +38,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         storage = PairingStorage(this)
-        AgentStateStore.setCredential(storage.loadCredential())
+        val cred = storage.loadCredential()
+        AgentStateStore.setCredential(cred)
         storage.loadGatewayHint()?.let {
             AgentStateStore.setPairingOffer(it)
+            val isCloud = it.ssl || it.url.contains("onrender.com")
             AgentStateStore.setGateway(
                 com.brahma.connect.core.GatewayEndpoint(
-                    name = "Brahma PC",
+                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
                     host = it.host,
                     port = it.port,
+                    ssl = it.ssl,
+                    path = it.path,
+                    url = it.url,
+                )
+            )
+        }
+        if (AgentStateStore.gateway.value == null && cred != null) {
+            val isCloud = cred.ssl || cred.gatewayUrl.contains("onrender.com")
+            AgentStateStore.setGateway(
+                com.brahma.connect.core.GatewayEndpoint(
+                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    host = cred.gatewayHost,
+                    port = cred.gatewayPort,
+                    ssl = cred.ssl,
+                    url = cred.gatewayUrl,
                 )
             )
         }

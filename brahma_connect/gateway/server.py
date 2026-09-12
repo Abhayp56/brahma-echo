@@ -108,6 +108,9 @@ class BrahmaGateway:
         self._log: list[dict[str, Any]] = []
         self._pending_requests: dict[str, dict[str, Any]] = {}
         self.on_chat_message = None
+        self.on_call_event = None
+        self.on_call_audio = None
+        self.active_calls: dict[str, dict[str, Any]] = {}
         self.app = self._build_app()
 
     def is_running(self) -> bool:
@@ -315,6 +318,51 @@ class BrahmaGateway:
     async def route_command(self, target: str, action: str, parameters: dict[str, Any] | None = None) -> dict[str, Any]:
         return await self.command_router.route(target, action, parameters or {}, timeout=self.config.request_timeout_seconds)
 
+    async def call_device(self, device_id: str | None = None, caller_name: str = "ARYA", reason: str = "Voice Call") -> dict[str, Any]:
+        target_id = device_id
+        if not target_id:
+            for dev in self.device_manager.list_devices():
+                if dev.get("online"):
+                    target_id = dev.get("device_id")
+                    break
+        if not target_id:
+            return {"success": False, "error": "No online Android devices found."}
+
+        call_id = new_request_id()
+        msg = build_message(
+            ProtocolTypes.CALL_OFFER,
+            {
+                "call_id": call_id,
+                "caller_name": caller_name,
+                "reason": reason,
+            },
+            request_id=call_id,
+        )
+        sent = await self.hub.send_to_device(target_id, msg)
+        if sent:
+            self.active_calls[call_id] = {
+                "call_id": call_id,
+                "device_id": target_id,
+                "caller": caller_name,
+                "reason": reason,
+                "status": "ringing",
+                "started_at": now_iso(),
+            }
+            self._append_log("CALL_OFFERED", device_id=target_id, call_id=call_id, caller=caller_name, reason=reason)
+        return {"success": sent, "call_id": call_id, "device_id": target_id}
+
+    async def end_call(self, device_id: str, call_id: str) -> dict[str, Any]:
+        msg = build_message(ProtocolTypes.CALL_END, {"call_id": call_id})
+        sent = await self.hub.send_to_device(device_id, msg)
+        self.active_calls.pop(call_id, None)
+        self._append_log("CALL_ENDED_LOCAL", device_id=device_id, call_id=call_id)
+        return {"success": sent}
+
+    async def send_call_audio(self, device_id: str, call_id: str, data_base64: str) -> dict[str, Any]:
+        msg = build_message(ProtocolTypes.CALL_AUDIO, {"call_id": call_id, "data": data_base64})
+        sent = await self.hub.send_to_device(device_id, msg)
+        return {"success": sent}
+
     async def _pair_device(self, payload: dict[str, Any], websocket: WebSocket) -> dict[str, Any]:
         offer_token = str(payload.get("pairing_token") or "").strip()
         offer_code = str(payload.get("pairing_code") or "").strip()
@@ -412,6 +460,21 @@ class BrahmaGateway:
                 return JSONResponse({"ok": False, "error": "Pending request not found."}, status_code=404)
             return {"ok": True}
 
+        @app.post("/gateway/call")
+        async def api_call_device(data: dict):
+            """Initiate a two-way voice call with a connected companion device."""
+            device_id = data.get("device_id")
+            caller = data.get("caller", "ARYA")
+            reason = data.get("reason", "Voice Call")
+            return await self.call_device(device_id=device_id, caller_name=caller, reason=reason)
+
+        @app.post("/gateway/call/end")
+        async def api_end_call(data: dict):
+            """End an active voice call."""
+            device_id = data.get("device_id", "")
+            call_id = data.get("call_id", "")
+            return await self.end_call(device_id, call_id)
+
         @app.websocket("/ws")
         async def ws_endpoint(websocket: WebSocket):
             await websocket.accept()
@@ -500,6 +563,36 @@ class BrahmaGateway:
                     if msg_type == ProtocolTypes.CHAT_MESSAGE:
                         if self.on_chat_message and payload.get("text"):
                             self.on_chat_message(payload.get("text"))
+                        continue
+
+                    if msg_type == ProtocolTypes.CALL_ANSWER:
+                        self._append_log("CALL_ANSWERED", device_id=device_id, payload=payload)
+                        call_id = payload.get("call_id", "")
+                        if call_id in self.active_calls:
+                            self.active_calls[call_id]["status"] = "active"
+                        if self.on_call_event:
+                            await self.on_call_event("answer", device_id, payload)
+                        continue
+
+                    if msg_type == ProtocolTypes.CALL_REJECT:
+                        self._append_log("CALL_REJECTED", device_id=device_id, payload=payload)
+                        call_id = payload.get("call_id", "")
+                        self.active_calls.pop(call_id, None)
+                        if self.on_call_event:
+                            await self.on_call_event("reject", device_id, payload)
+                        continue
+
+                    if msg_type == ProtocolTypes.CALL_END:
+                        self._append_log("CALL_ENDED", device_id=device_id, payload=payload)
+                        call_id = payload.get("call_id", "")
+                        self.active_calls.pop(call_id, None)
+                        if self.on_call_event:
+                            await self.on_call_event("end", device_id, payload)
+                        continue
+
+                    if msg_type == ProtocolTypes.CALL_AUDIO:
+                        if self.on_call_audio:
+                            await self.on_call_audio(device_id, payload.get("data", ""))
                         continue
 
                     if msg_type == ProtocolTypes.DEVICE_OFFLINE:

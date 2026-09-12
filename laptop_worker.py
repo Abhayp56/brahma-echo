@@ -166,6 +166,16 @@ class LaptopWorker:
         self.audio_worker = None
         self._tool_lock = asyncio.Lock()
 
+        # Initialize Brahma Connect gateway for Android companion bridge
+        self.connect_service = None
+        try:
+            from brahma_connect.service import get_service
+            self.connect_service = get_service(BASE_DIR)
+            self.connect_service.start_background()
+            logger.info(f"📱 Brahma Connect Gateway running in background on port {self.connect_service.gateway.config.port} (mDNS active)")
+        except Exception as e:
+            logger.warning(f"Could not start Brahma Connect Gateway: {e}")
+
     def queue_mic_audio(self, raw_pcm: bytes):
         """Callback to send captured microphone audio chunk over WebSocket."""
         if not getattr(self, "is_authenticated", False) or not self.ws:
@@ -208,13 +218,16 @@ class LaptopWorker:
                 logger.info("Connected to server. Sending authentication handshake...")
 
                 # 1. Send AUTH
+                auth_payload = {
+                    "token": self.auth_token,
+                    "device_name": self.device_name,
+                    "platform": sys.platform,
+                    "brahma_connect_port": self.connect_service.gateway.config.port if self.connect_service else 8765,
+                    "paired_devices": len(self.connect_service.list_devices()) if self.connect_service else 0,
+                }
                 auth_msg = build_message(
                     ProtocolTypes.AUTH,
-                    payload={
-                        "token": self.auth_token,
-                        "device_name": self.device_name,
-                        "platform": sys.platform,
-                    },
+                    payload=auth_payload,
                 )
                 await ws.send(auth_msg.to_json())
 

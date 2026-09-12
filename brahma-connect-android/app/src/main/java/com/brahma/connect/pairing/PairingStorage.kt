@@ -26,6 +26,8 @@ class PairingStorage(context: Context) {
                 .put("gateway_host", credential.gatewayHost)
                 .put("gateway_port", credential.gatewayPort)
                 .put("paired_at", credential.pairedAt)
+                .put("gateway_url", credential.gatewayUrl)
+                .put("ssl", credential.ssl)
                 .toString())
             .apply()
     }
@@ -41,6 +43,8 @@ class PairingStorage(context: Context) {
                 gatewayHost = json.optString("gateway_host"),
                 gatewayPort = json.optInt("gateway_port", 8765),
                 pairedAt = json.optString("paired_at"),
+                gatewayUrl = json.optString("gateway_url", ""),
+                ssl = json.optBoolean("ssl", false),
             )
         } catch (_: Exception) {
             null

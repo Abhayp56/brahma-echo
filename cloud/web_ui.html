@@ -153,6 +153,43 @@
       box-shadow: 0 0 8px #25d366;
     }
 
+    .phone-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #38bdf8;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+
+    .phone-btn:hover {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .phone-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #777;
+      display: inline-block;
+      transition: 0.3s;
+    }
+
+    .phone-status-dot.online {
+      background: #00ff88;
+      box-shadow: 0 0 8px #00ff88;
+    }
+
     .device-status {
       display: flex;
       align-items: center;
@@ -651,6 +688,9 @@
       </div>
     </div>
     <div class="header-actions">
+      <button class="phone-btn" id="openPhoneBtn" onclick="openPhoneModal()" title="Direct Cloud Phone Companion & VoIP (No Laptop Required)">
+        📞 Phone <span class="phone-status-dot" id="phoneNavDot"></span>
+      </button>
       <button class="whatsapp-btn" id="openWhatsAppBtn" onclick="openWhatsAppModal()" title="Manage Server-Side WhatsApp & AI Auto-Replies">
         📱 WhatsApp <span class="wa-status-dot" id="waNavDot"></span>
       </button>
@@ -874,6 +914,53 @@
           </div>
         </div>
 
+  <!-- Phone Companion Modal -->
+  <div class="modal-overlay" id="phoneModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>📱 Android Phone Companion <span class="modal-badge" id="phoneModalBadge">Disconnected</span></h2>
+        <button class="modal-close" onclick="closePhoneModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          Connect your Android phone directly to the Cloud Brain over secure WebSocket (WSS). No laptop mediator required. ARYA can call your phone from anywhere in the world!
+        </p>
+
+        <!-- Phone Disconnected: QR Code Pairing View -->
+        <div id="phoneQrContainer" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.3); border: 1px dashed rgba(56,189,248,0.3); border-radius: 12px; margin-bottom: 16px;">
+          <div style="font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">Scan to Pair Phone</div>
+          <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 14px; max-width: 320px;">
+            Open <strong>Brahma Connect</strong> on your phone &rarr; Tap <strong>Scan QR</strong> &rarr; Point camera at this code.
+          </p>
+          <div id="phoneQrImgWrapper" style="background: #fff; padding: 12px; border-radius: 10px; box-shadow: 0 0 20px rgba(56,189,248,0.2);">
+            <img id="phoneQrImage" src="" alt="Phone Pairing QR" style="width: 200px; height: 200px; display: block;" />
+          </div>
+          <button onclick="refreshPhoneQr()" style="margin-top: 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: 16px; font-size: 12px; cursor: pointer;">🔄 Refresh QR</button>
+        </div>
+
+        <!-- Phone Connected View -->
+        <div id="phoneConnectedCard" style="display: none; background: rgba(56,189,248,0.05); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 18px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 24px;">📱</span>
+              <div>
+                <div id="phoneDeviceName" style="font-weight: 600; font-size: 15px; color: #fff;">Android Phone</div>
+                <div style="font-size: 12px; color: #00ff88;">🟢 Direct Cloud WSS Connected</div>
+              </div>
+            </div>
+            <div id="phoneBatteryBadge" style="font-size: 12px; background: rgba(0,255,136,0.1); color: #00ff88; padding: 4px 10px; border-radius: 12px;">Battery: --</div>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 14px;">
+            <button id="callPhoneBtn" onclick="triggerTestCall()" style="flex: 1; background: linear-gradient(135deg, #00ff88, #00bb66); color: #000; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              📞 Call My Phone Now
+            </button>
+            <button id="endPhoneCallBtn" onclick="endCurrentCall()" style="display: none; background: #ff4444; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer;">
+              End Call
+            </button>
+          </div>
+          <div id="callFeedback" style="font-size: 12px; color: var(--accent); margin-top: 8px; text-align: center; display: none;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1161,9 +1248,8 @@
                 audioPlaybackTimer = setTimeout(onAssistantFinishedSpeaking, 1000);
               }
               hasReceivedAudioThisTurn = false;
-            } else if (msg.role === 'user') {
-              hasReceivedAudioThisTurn = false;
-            }
+          } else if (msg.type === 'phone_status') {
+            updatePhoneUI(msg);
           } else if (msg.type === 'whatsapp_status') {
             updateWhatsAppUI(msg.data);
           } else if (msg.type === 'whatsapp_qr') {
@@ -1729,6 +1815,159 @@
     // Periodic WhatsApp status check
     setInterval(fetchWhatsAppStatus, 5000);
     fetchWhatsAppStatus();
+
+    // =========================================================================
+    // Phone Companion Management Logic (Direct Cloud Connection)
+    // =========================================================================
+    const phoneModal = document.getElementById('phoneModal');
+    const phoneNavDot = document.getElementById('phoneNavDot');
+    const phoneModalBadge = document.getElementById('phoneModalBadge');
+    const phoneQrContainer = document.getElementById('phoneQrContainer');
+    const phoneQrImage = document.getElementById('phoneQrImage');
+    const phoneConnectedCard = document.getElementById('phoneConnectedCard');
+    const phoneDeviceName = document.getElementById('phoneDeviceName');
+    const phoneBatteryBadge = document.getElementById('phoneBatteryBadge');
+    const callPhoneBtn = document.getElementById('callPhoneBtn');
+    const endPhoneCallBtn = document.getElementById('endPhoneCallBtn');
+    const callFeedback = document.getElementById('callFeedback');
+
+    let isPhoneConnected = false;
+    let activePhoneCallId = null;
+
+    function openPhoneModal() {
+      phoneModal.classList.add('open');
+      checkPhoneStatus();
+      if (!isPhoneConnected) {
+        refreshPhoneQr();
+      }
+    }
+
+    function closePhoneModal() {
+      phoneModal.classList.remove('open');
+    }
+
+    function updatePhoneUI(data) {
+      isPhoneConnected = !!data.connected;
+      if (data.active_call) {
+        activePhoneCallId = data.active_call.call_id;
+      } else if (data.active_calls && data.active_calls.length > 0) {
+        activePhoneCallId = data.active_calls[0].call_id;
+      } else {
+        activePhoneCallId = null;
+      }
+
+      if (isPhoneConnected) {
+        if (phoneNavDot) phoneNavDot.className = 'phone-status-dot online';
+        if (phoneModalBadge) {
+          phoneModalBadge.className = 'modal-badge online';
+          phoneModalBadge.textContent = 'Connected (WSS)';
+        }
+        if (phoneQrContainer) phoneQrContainer.style.display = 'none';
+        if (phoneConnectedCard) phoneConnectedCard.style.display = 'block';
+
+        const info = data.phone_info || {};
+        if (phoneDeviceName) {
+          phoneDeviceName.textContent = info.device_name || info.name || 'Android Companion';
+        }
+        const batt = info.battery?.percentage ?? info.battery ?? null;
+        if (phoneBatteryBadge) {
+          if (batt !== null && batt !== undefined && batt >= 0) {
+            phoneBatteryBadge.textContent = '🔋 Battery: ' + batt + '%';
+          } else {
+            phoneBatteryBadge.textContent = '🔋 Online';
+          }
+        }
+
+        if (activePhoneCallId) {
+          if (callPhoneBtn) callPhoneBtn.style.display = 'none';
+          if (endPhoneCallBtn) endPhoneCallBtn.style.display = 'block';
+          if (callFeedback) {
+            callFeedback.style.display = 'block';
+            callFeedback.textContent = '📞 VoIP Call Active! Two-way audio streaming.';
+          }
+        } else {
+          if (callPhoneBtn) callPhoneBtn.style.display = 'flex';
+          if (endPhoneCallBtn) endPhoneCallBtn.style.display = 'none';
+          if (callFeedback) callFeedback.style.display = 'none';
+        }
+      } else {
+        if (phoneNavDot) phoneNavDot.className = 'phone-status-dot';
+        if (phoneModalBadge) {
+          phoneModalBadge.className = 'modal-badge';
+          phoneModalBadge.textContent = 'Disconnected';
+        }
+        if (phoneQrContainer) phoneQrContainer.style.display = 'flex';
+        if (phoneConnectedCard) phoneConnectedCard.style.display = 'none';
+      }
+    }
+
+    async function checkPhoneStatus() {
+      try {
+        const res = await fetch('/api/phone/status');
+        const data = await res.json();
+        updatePhoneUI(data);
+      } catch (err) {
+        console.warn('Phone status check failed:', err);
+      }
+    }
+
+    async function refreshPhoneQr() {
+      try {
+        const res = await fetch('/api/phone/qr');
+        const data = await res.json();
+        if (data.qr_data_url && phoneQrImage) {
+          phoneQrImage.src = data.qr_data_url;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch Phone QR:', err);
+      }
+    }
+
+    async function triggerTestCall() {
+      if (callFeedback) {
+        callFeedback.style.display = 'block';
+        callFeedback.textContent = 'Calling your phone now... Please answer on your screen!';
+      }
+      if (callPhoneBtn) callPhoneBtn.disabled = true;
+      try {
+        const res = await fetch('/api/phone/call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caller: 'ARYA', reason: 'Direct Cloud Voice Call from ARYA Web AI' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          activePhoneCallId = data.call_id;
+          if (callPhoneBtn) callPhoneBtn.style.display = 'none';
+          if (endPhoneCallBtn) endPhoneCallBtn.style.display = 'block';
+        } else {
+          if (callFeedback) callFeedback.textContent = 'Call failed: ' + (data.error || 'Unknown error');
+        }
+      } catch (err) {
+        if (callFeedback) callFeedback.textContent = 'Call error: ' + err.message;
+      } finally {
+        if (callPhoneBtn) callPhoneBtn.disabled = false;
+      }
+    }
+
+    async function endCurrentCall() {
+      try {
+        await fetch('/api/phone/end-call', { method: 'POST' });
+        activePhoneCallId = null;
+        if (callPhoneBtn) callPhoneBtn.style.display = 'flex';
+        if (endPhoneCallBtn) endPhoneCallBtn.style.display = 'none';
+        if (callFeedback) {
+          callFeedback.textContent = 'Call ended.';
+          setTimeout(() => { callFeedback.style.display = 'none'; }, 2000);
+        }
+      } catch (err) {
+        console.warn('End call error:', err);
+      }
+    }
+
+    // Periodic Phone status check
+    setInterval(checkPhoneStatus, 4000);
+    checkPhoneStatus();
   </script>
 </body>
 </html>

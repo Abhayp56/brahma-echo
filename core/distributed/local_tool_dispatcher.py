@@ -178,4 +178,16 @@ class LocalToolDispatcher:
             from actions.terminal_agent import terminal_agent
             return lambda a: terminal_agent(parameters=a, player=self.player, speak=self.speak_fn)
 
+        elif tool_name in {"call_user_phone", "connect_call_device"}:
+            from actions.brahma_connect import connect_call_device
+            return lambda a: connect_call_device(parameters=a, player=self.player)
+
+        elif tool_name in {"end_call", "connect_end_call"}:
+            from actions.brahma_connect import connect_end_call
+            return lambda a: connect_end_call(parameters=a, player=self.player)
+
+        elif tool_name in {"brahma_connect", "connect_execute", "connect_execute_action"}:
+            from actions.brahma_connect import connect_execute
+            return lambda a: connect_execute(parameters=a, player=self.player)
+
         return None

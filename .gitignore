@@ -73,3 +73,9 @@ search_results.txt
 homescreen background/node_modules/
 homescreen background/.next/
 homescreen background/out/
+
+# Android Build & Gradle
+brahma-connect-android/.gradle/
+brahma-connect-android/**/build/
+brahma-connect-android/local.properties
+pairing_qr.png

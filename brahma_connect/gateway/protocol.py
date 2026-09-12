@@ -22,6 +22,11 @@ class ProtocolTypes:
     FILE_TRANSFER = "file_transfer"
     SCREEN_CAPTURE = "screen_capture"
     CHAT_MESSAGE = "chat_message"
+    CALL_OFFER = "call_offer"
+    CALL_ANSWER = "call_answer"
+    CALL_REJECT = "call_reject"
+    CALL_END = "call_end"
+    CALL_AUDIO = "call_audio"
 
 
 def now_iso() -> str:

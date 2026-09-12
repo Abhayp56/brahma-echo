@@ -307,3 +307,62 @@ def connect_execute(parameters: dict[str, Any] | None = None, player=None, speak
         return _dump(result)
     except Exception as exc:
         return _fail(str(exc), "GATEWAY_UNAVAILABLE", device=target, action=action)
+
+
+def connect_call_device(parameters: dict[str, Any] | None = None, player=None, speak=None) -> str:
+    """Initiate an incoming voice call from ARYA to the user's Android phone."""
+    params = parameters or {}
+    target = _normalize_target(params)
+    reason = str(params.get("reason") or params.get("message") or "Voice call from ARYA").strip()
+    caller = str(params.get("caller") or "ARYA").strip()
+
+    try:
+        service = _service()
+        gateway = getattr(service, "gateway", service)
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                gateway.call_device(device_id=target or None, caller_name=caller, reason=reason),
+                loop
+            )
+            result = future.result(timeout=10.0)
+        else:
+            result = asyncio.run(gateway.call_device(device_id=target or None, caller_name=caller, reason=reason))
+
+        return _dump(result)
+    except Exception as exc:
+        return _fail(str(exc), "CALL_FAILED", device=target, reason=reason)
+
+
+def connect_end_call(parameters: dict[str, Any] | None = None, player=None, speak=None) -> str:
+    """End an active voice call with the user's Android phone."""
+    params = parameters or {}
+    target = _normalize_target(params)
+    call_id = str(params.get("call_id") or "").strip()
+
+    try:
+        service = _service()
+        gateway = getattr(service, "gateway", service)
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                gateway.end_call(device_id=target, call_id=call_id),
+                loop
+            )
+            result = future.result(timeout=10.0)
+        else:
+            result = asyncio.run(gateway.end_call(device_id=target, call_id=call_id))
+
+        return _dump(result)
+    except Exception as exc:
+        return _fail(str(exc), "CALL_END_FAILED", device=target, call_id=call_id)
