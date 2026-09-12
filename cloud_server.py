@@ -301,6 +301,8 @@ class CloudPhoneHub:
         if not self.is_connected or not self.active_calls:
             return
         active_call = next((cid for cid, c in self.active_calls.items() if c.get("status") == "active"), None)
+        if not active_call and self.active_calls:
+            active_call = next(iter(self.active_calls.keys()))
         if not active_call:
             return
         msg = {
@@ -834,10 +836,20 @@ async def websocket_phone_companion(websocket: WebSocket):
             # 4. Call Answered
             elif msg_type == "call_answer":
                 call_id = payload.get("call_id")
+                target_call = None
                 if call_id and call_id in phone_hub.active_calls:
-                    phone_hub.active_calls[call_id]["status"] = "active"
-                    logger.info(f"📞 Android call {call_id} is now ACTIVE.")
+                    target_call = phone_hub.active_calls[call_id]
+                elif phone_hub.active_calls:
+                    target_call = next(reversed(list(phone_hub.active_calls.values())))
+                    call_id = target_call.get("call_id")
+                if target_call:
+                    target_call["status"] = "active"
+                    reason = target_call.get("reason", "Voice Call")
+                    logger.info(f"📞 Android call {call_id} is now ACTIVE. Triggering voice greeting...")
                     broadcast_phone_status_to_web()
+                    if brain:
+                        greeting = f"[Voice call connected with user on phone for: '{reason}'. Greet the user naturally, concisely, and warmly right now to start the live conversation!]"
+                        asyncio.create_task(brain.handle_text_command(greeting))
 
             # 5. Call Rejected
             elif msg_type == "call_reject":

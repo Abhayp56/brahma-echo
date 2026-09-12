@@ -64,11 +64,23 @@ class CallActivity : ComponentActivity() {
 
     private lateinit var callManager: CallManager
 
+    private val requestMicPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            android.util.Log.i("CallActivity", "Microphone permission granted.")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         callManager = CallManager.getInstance(this)
 
         setupLockscreenFlags()
+
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
 
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: "ARYA"
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "Voice Call"
@@ -88,7 +100,12 @@ class CallActivity : ComponentActivity() {
                     callerName = callerName,
                     reason = reason,
                     callState = callState,
-                    onAccept = { callManager.acceptCall() },
+                    onAccept = {
+                        if (androidx.core.content.ContextCompat.checkSelfPermission(this@CallActivity, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                        callManager.acceptCall()
+                    },
                     onReject = {
                         callManager.rejectCall()
                         finish()
@@ -129,7 +146,7 @@ fun CallScreenContent(
     onSpeakerToggle: (Boolean) -> Unit,
 ) {
     var isMuted by remember { mutableStateOf(false) }
-    var isSpeakerOn by remember { mutableStateOf(false) }
+    var isSpeakerOn by remember { mutableStateOf(true) }
     var callSeconds by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(callState) {

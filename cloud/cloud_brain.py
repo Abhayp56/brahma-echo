@@ -184,7 +184,7 @@ class CloudBrain:
             return
         try:
             await self.session.send_realtime_input(
-                media={"data": pcm_chunk, "mime_type": "audio/pcm"}
+                media={"data": pcm_chunk, "mime_type": "audio/pcm;rate=16000"}
             )
         except Exception as e:
             logger.error(f"Failed to forward realtime audio: {e}")

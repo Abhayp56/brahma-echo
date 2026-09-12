@@ -22,6 +22,12 @@ class MainActivity : ComponentActivity() {
         // The UI will react by showing the scanner if permission is granted.
     }
 
+    private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            AgentStateStore.setError("Microphone permission is required for voice calls.")
+        }
+    }
+
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             if (pendingServiceStart) {
@@ -68,6 +74,7 @@ class MainActivity : ComponentActivity() {
         }
         maybeStartService()
         ensureCameraPermission()
+        ensureAudioPermission()
         setContent {
             BrahmaConnectTheme {
                 BrahmaConnectApp(
@@ -100,6 +107,12 @@ class MainActivity : ComponentActivity() {
     private fun ensureCameraPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun ensureAudioPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 

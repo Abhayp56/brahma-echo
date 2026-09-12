@@ -105,7 +105,7 @@ class VoiceCallAudioEngine(
     private fun setupAudioRouting() {
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = false
+            audioManager.isSpeakerphoneOn = true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to set audio mode IN_COMMUNICATION: ${e.message}")
         }
@@ -158,13 +158,30 @@ class VoiceCallAudioEngine(
         val bufferSize = maxOf(minBufferSize, 2048)
 
         try {
-            val record = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                RECORD_SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize
-            )
+            var record: AudioRecord? = null
+            try {
+                record = AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    RECORD_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "VOICE_COMMUNICATION failed: ${e.message}")
+            }
+
+            if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
+                record?.release()
+                Log.i(TAG, "Falling back to AudioSource.MIC for AudioRecord")
+                record = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    RECORD_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+            }
 
             val sessionId = record.audioSessionId
             if (AcousticEchoCanceler.isAvailable()) {
