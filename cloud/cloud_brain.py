@@ -125,7 +125,7 @@ class CloudBrain:
         self.session = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self.audio_out_queue: asyncio.Queue = asyncio.Queue()
-        self.audio_in_queue: asyncio.Queue = asyncio.Queue(maxsize=25)
+        self.audio_in_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
         self._in_worker_task: Optional[asyncio.Task] = None
         self.is_running = False
         self.is_speaking = False
@@ -164,6 +164,9 @@ class CloudBrain:
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
             "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
+            "VOICE CALL CONVERSATIONAL RULES:\n"
+            "- Speak naturally, concisely, and crisply in 1 to 2 sentences per turn so live conversations feel instant, energetic, and engaging.\n"
+            "- Only invoke tools when the user gives a clear, explicit instruction to perform an action. Do NOT invoke tools for casual remarks, emotional expressions, or general chit-chat.\n"
         )
 
         return types.LiveConnectConfig(

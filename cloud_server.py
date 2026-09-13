@@ -190,7 +190,7 @@ class CloudPhoneHub:
         self.pairing_offers: Dict[str, Dict[str, Any]] = {}
         self.device_secret: str = secrets.token_hex(24)
         self.device_id: str = "android_companion_primary"
-        self.audio_out_queue: asyncio.Queue = asyncio.Queue(maxsize=35)
+        self.audio_out_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._out_worker_task: Optional[asyncio.Task] = None
 
     @property

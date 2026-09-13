@@ -35,7 +35,7 @@ class VoiceCallAudioEngine(
 
     private var recordingJob: Job? = null
     private var playbackJob: Job? = null
-    private val playbackQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(40)
+    private val playbackQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(1000)
     private val engineScope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
     private var isMuted = false
@@ -50,8 +50,8 @@ class VoiceCallAudioEngine(
         isAryaSpeaking = false
         lastAryaSpeechTimestamp = 0L
         setupAudioRouting()
-        setupAudioTrack()
-        setupAudioRecord()
+        val sessionId = setupAudioRecord()
+        setupAudioTrack(sessionId)
         startPlaybackLoop()
         startRecordingLoop()
         Log.i(TAG, "VoiceCallAudioEngine started (Low-Latency Realtime Mode).")
@@ -108,15 +108,12 @@ class VoiceCallAudioEngine(
         if (!isRunning) return
         try {
             val pcmBytes = Base64.decode(base64Data, Base64.DEFAULT)
-            // Prevent playback queue buildup; drop oldest chunks if network bursts
-            while (playbackQueue.size > 12) {
-                playbackQueue.poll()
-            }
             playbackQueue.offer(pcmBytes)
         } catch (e: Exception) {
             Log.w(TAG, "Error queuing audio chunk: ${e.message}")
         }
     }
+
 
 
     fun setMuted(muted: Boolean) {
@@ -149,7 +146,7 @@ class VoiceCallAudioEngine(
         }
     }
 
-    private fun setupAudioTrack() {
+    private fun setupAudioTrack(sessionId: Int) {
         val minBufferSize = AudioTrack.getMinBufferSize(
             PLAYBACK_SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -157,7 +154,7 @@ class VoiceCallAudioEngine(
         )
         val bufferSize = maxOf(minBufferSize, 4096)
 
-        audioTrack = AudioTrack.Builder()
+        val builder = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -173,12 +170,16 @@ class VoiceCallAudioEngine(
             )
             .setBufferSizeInBytes(bufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
 
+        if (sessionId != AudioManager.AUDIO_SESSION_ID_GENERATE) {
+            builder.setSessionId(sessionId)
+        }
+
+        audioTrack = builder.build()
         audioTrack?.play()
     }
 
-    private fun setupAudioRecord() {
+    private fun setupAudioRecord(): Int {
         val minBufferSize = AudioRecord.getMinBufferSize(
             RECORD_SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
@@ -226,12 +227,15 @@ class VoiceCallAudioEngine(
 
             record.startRecording()
             audioRecord = record
+            return sessionId
         } catch (e: SecurityException) {
             Log.e(TAG, "RECORD_AUDIO permission missing: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start AudioRecord: ${e.message}")
         }
+        return AudioManager.AUDIO_SESSION_ID_GENERATE
     }
+
 
     private fun startPlaybackLoop() {
         playbackJob = engineScope.launch {
@@ -255,14 +259,17 @@ class VoiceCallAudioEngine(
         recordingJob = engineScope.launch {
             // 1600 bytes = 800 samples = 50ms at 16kHz (optimal VoIP packetization interval)
             val buffer = ByteArray(1600)
+            var lastVoiceDetectedTimestamp = 0L
+            var adaptiveNoiseFloor = 100.0
+
             while (isActive && isRunning) {
                 val record = audioRecord ?: break
                 val read = record.read(buffer, 0, buffer.size)
                 if (read > 0 && !isMuted) {
                     val now = System.currentTimeMillis()
-                    val speaking = isAryaSpeaking || (now - lastAryaSpeechTimestamp < 400L)
+                    val speaking = isAryaSpeaking || (now - lastAryaSpeechTimestamp < 450L)
 
-                    // Calculate RMS of recorded chunk to detect user voice vs speakerphone echo
+                    // Calculate RMS of recorded 50ms chunk
                     var sum = 0.0
                     var i = 0
                     val numSamples = read / 2
@@ -274,25 +281,37 @@ class VoiceCallAudioEngine(
                     }
                     val rms = if (numSamples > 0) Math.sqrt(sum / numSamples) else 0.0
 
-                    // Smart Echo Gate:
-                    // When ARYA is speaking through the loudspeaker:
-                    // - Hardware AEC reduces speaker residue into mic to < 2200 RMS.
-                    // - If RMS < 2600, suppress chunk so ARYA does NOT hear her own voice and interrupt herself!
-                    // - If RMS >= 2600, user is speaking over ARYA (barge-in):
-                    //   -> immediately cut off loudspeaker playback and send chunk to Gemini Live!
-                    // When ARYA is silent:
-                    // - Filter low background noise (RMS >= 60) to keep Gemini Live VAD crisp and responsive.
-                    val shouldSend = if (speaking) {
-                        if (rms >= 2600.0) {
-                            clearPlayback()
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        rms >= 60.0
+                    // Adapt background room noise floor during silence
+                    if (!speaking && rms < 350.0) {
+                        adaptiveNoiseFloor = adaptiveNoiseFloor * 0.95 + rms * 0.05
                     }
 
+                    val shouldSend: Boolean
+                    if (speaking) {
+                        // ARYA speaking through loudspeaker:
+                        // Hardware AEC cancels speaker audio; residue is < 2400 RMS.
+                        // If user speaks firmly over ARYA (barge-in >= 2600 RMS):
+                        if (rms >= 2600.0) {
+                            clearPlayback()
+                            lastVoiceDetectedTimestamp = now
+                            shouldSend = true
+                        } else {
+                            shouldSend = false
+                        }
+                    } else {
+                        // ARYA silent:
+                        // Set voice threshold dynamically above ambient room noise
+                        val voiceThreshold = maxOf(adaptiveNoiseFloor * 2.2, 350.0)
+                        if (rms >= voiceThreshold) {
+                            lastVoiceDetectedTimestamp = now
+                            shouldSend = true
+                        } else {
+                            // 500ms speech hangover: keep sending for 500ms after last detected speech
+                            // so word endings and short natural pauses are never chopped.
+                            // Once 500ms elapses, stop sending chunks so Gemini Live VAD detects turn end instantly!
+                            shouldSend = (now - lastVoiceDetectedTimestamp < 500L)
+                        }
+                    }
 
                     if (shouldSend) {
                         val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
@@ -303,4 +322,5 @@ class VoiceCallAudioEngine(
             }
         }
     }
+
 }
