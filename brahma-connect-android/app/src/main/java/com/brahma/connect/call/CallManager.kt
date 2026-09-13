@@ -118,6 +118,13 @@ class CallManager private constructor(private val context: Context) {
         }
     }
 
+    fun handleInterruption() {
+        if (AgentStateStore.callState.value == CallState.ACTIVE) {
+            audioEngine?.clearPlayback()
+        }
+    }
+
+
     fun setMuted(muted: Boolean) {
         audioEngine?.setMuted(muted)
     }

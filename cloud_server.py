@@ -190,6 +190,8 @@ class CloudPhoneHub:
         self.pairing_offers: Dict[str, Dict[str, Any]] = {}
         self.device_secret: str = secrets.token_hex(24)
         self.device_id: str = "android_companion_primary"
+        self.audio_out_queue: asyncio.Queue = asyncio.Queue(maxsize=35)
+        self._out_worker_task: Optional[asyncio.Task] = None
 
     @property
     def is_connected(self) -> bool:
@@ -238,13 +240,29 @@ class CloudPhoneHub:
         self.phone_ws = ws
         self.phone_info = dict(info or {})
         self.phone_info["connected_at"] = time.time()
+        while not self.audio_out_queue.empty():
+            try:
+                self.audio_out_queue.get_nowait()
+            except Exception:
+                break
+        if self._out_worker_task and not self._out_worker_task.done():
+            self._out_worker_task.cancel()
+        self._out_worker_task = asyncio.create_task(self._audio_out_worker())
         logger.info(f"📱 Phone connected directly to Cloud Server: {self.phone_info.get('name', 'Android Phone')}")
 
     def unregister_phone(self):
         logger.info("📱 Phone disconnected from Cloud Server.")
+        if self._out_worker_task and not self._out_worker_task.done():
+            self._out_worker_task.cancel()
+        self._out_worker_task = None
         self.phone_ws = None
         self.phone_info = {}
         self.active_calls.clear()
+        while not self.audio_out_queue.empty():
+            try:
+                self.audio_out_queue.get_nowait()
+            except Exception:
+                break
 
     async def call_phone(self, caller_name: str = "ARYA", reason: str = "Voice call from ARYA") -> Dict[str, Any]:
         if not self.is_connected:
@@ -297,7 +315,52 @@ class CloudPhoneHub:
                 pass
         return {"success": True}
 
-    async def forward_audio_to_phone(self, b64_pcm: str):
+    async def _audio_out_worker(self):
+        """Dedicated background task streaming 24kHz Gemini audio frames to the phone sequentially."""
+        while self.is_connected:
+            try:
+                item = await self.audio_out_queue.get()
+                if not item:
+                    continue
+                b64_pcm, active_call = item
+                if self.phone_ws:
+                    msg = {
+                        "type": "call_audio",
+                        "request_id": new_request_id(),
+                        "timestamp": now_iso(),
+                        "payload": {"call_id": active_call, "data": b64_pcm},
+                    }
+                    await self.phone_ws.send_text(json.dumps(msg))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Audio out worker error: {e}")
+
+    def clear_audio_queue(self):
+        """Flush pending outbound audio frames when turn ends or gets interrupted."""
+        while not self.audio_out_queue.empty():
+            try:
+                self.audio_out_queue.get_nowait()
+            except Exception:
+                break
+
+    async def send_interruption(self):
+        """Instruct the phone to immediately cut off current speech playback."""
+        self.clear_audio_queue()
+        if self.is_connected and self.phone_ws:
+            msg = {
+                "type": "call_interrupt",
+                "request_id": new_request_id(),
+                "timestamp": now_iso(),
+                "payload": {},
+            }
+            try:
+                await self.phone_ws.send_text(json.dumps(msg))
+                logger.info("⚡ Sent call_interrupt to phone.")
+            except Exception as e:
+                logger.debug(f"Failed to send call_interrupt: {e}")
+
+    def forward_audio_to_phone(self, b64_pcm: str):
         if not self.is_connected or not self.active_calls:
             return
         active_call = next((cid for cid, c in self.active_calls.items() if c.get("status") == "active"), None)
@@ -305,16 +368,15 @@ class CloudPhoneHub:
             active_call = next(iter(self.active_calls.keys()))
         if not active_call:
             return
-        msg = {
-            "type": "call_audio",
-            "request_id": new_request_id(),
-            "timestamp": now_iso(),
-            "payload": {"call_id": active_call, "data": b64_pcm},
-        }
         try:
-            await self.phone_ws.send_text(json.dumps(msg))
-        except Exception:
-            pass
+            self.audio_out_queue.put_nowait((b64_pcm, active_call))
+        except asyncio.QueueFull:
+            try:
+                self.audio_out_queue.get_nowait()
+                self.audio_out_queue.put_nowait((b64_pcm, active_call))
+            except Exception:
+                pass
+
 
 
 dispatcher = WebSocketToolDispatcher()
@@ -328,7 +390,7 @@ def broadcast_audio_to_web(pcm_chunk: bytes):
     """Sends synthesized 24kHz audio from Gemini Live directly to connected browser clients and active phone calls."""
     b64_data = base64.b64encode(pcm_chunk).decode("ascii")
     if phone_hub.is_connected and phone_hub.active_calls:
-        asyncio.create_task(phone_hub.forward_audio_to_phone(b64_data))
+        phone_hub.forward_audio_to_phone(b64_data)
     if not web_clients:
         return
     payload = json.dumps({"type": "audio_chunk", "data": b64_data})
@@ -869,8 +931,12 @@ async def websocket_phone_companion(websocket: WebSocket):
             elif msg_type == "call_audio":
                 b64_data = payload.get("data", "")
                 if b64_data and brain:
-                    pcm_bytes = base64.b64decode(b64_data)
-                    await brain.handle_incoming_audio(pcm_bytes)
+                    try:
+                        pcm_bytes = base64.b64decode(b64_data)
+                        await brain.handle_incoming_audio(pcm_bytes)
+                    except Exception as e:
+                        logger.debug(f"Phone audio decode error: {e}")
+
 
             # 8. Ping / Pong
             elif msg_type == "ping":

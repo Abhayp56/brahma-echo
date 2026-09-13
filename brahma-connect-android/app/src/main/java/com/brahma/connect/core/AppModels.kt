@@ -174,6 +174,8 @@ object BrahmaProtocol {
     const val CALL_REJECT = "call_reject"
     const val CALL_END = "call_end"
     const val CALL_AUDIO = "call_audio"
+    const val CALL_INTERRUPT = "call_interrupt"
+
 
     fun envelope(type: String, payload: JSONObject = JSONObject(), requestId: String = UUID.randomUUID().toString().replace("-", "")): JSONObject {
         return JSONObject()

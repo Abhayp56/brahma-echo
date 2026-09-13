@@ -34,18 +34,27 @@ class VoiceCallAudioEngine(
     private var noiseSuppressor: NoiseSuppressor? = null
 
     private var recordingJob: Job? = null
+    private var playbackJob: Job? = null
+    private val playbackQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(40)
     private val engineScope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
     private var isMuted = false
 
+    @Volatile private var isAryaSpeaking = false
+    @Volatile private var lastAryaSpeechTimestamp = 0L
+
     fun start() {
         if (isRunning) return
         isRunning = true
+        playbackQueue.clear()
+        isAryaSpeaking = false
+        lastAryaSpeechTimestamp = 0L
         setupAudioRouting()
         setupAudioTrack()
         setupAudioRecord()
+        startPlaybackLoop()
         startRecordingLoop()
-        Log.i(TAG, "VoiceCallAudioEngine started.")
+        Log.i(TAG, "VoiceCallAudioEngine started (Low-Latency Realtime Mode).")
     }
 
     fun stop() {
@@ -53,6 +62,9 @@ class VoiceCallAudioEngine(
         isRunning = false
         recordingJob?.cancel()
         recordingJob = null
+        playbackJob?.cancel()
+        playbackJob = null
+        playbackQueue.clear()
 
         try {
             audioRecord?.stop()
@@ -80,15 +92,32 @@ class VoiceCallAudioEngine(
         Log.i(TAG, "VoiceCallAudioEngine stopped.")
     }
 
+    fun clearPlayback() {
+        playbackQueue.clear()
+        isAryaSpeaking = false
+        try {
+            audioTrack?.pause()
+            audioTrack?.flush()
+            audioTrack?.play()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to flush AudioTrack: ${e.message}")
+        }
+    }
+
     fun playAudioChunkBase64(base64Data: String) {
         if (!isRunning) return
         try {
             val pcmBytes = Base64.decode(base64Data, Base64.DEFAULT)
-            audioTrack?.write(pcmBytes, 0, pcmBytes.size)
+            // Prevent playback queue buildup; drop oldest chunks if network bursts
+            while (playbackQueue.size > 12) {
+                playbackQueue.poll()
+            }
+            playbackQueue.offer(pcmBytes)
         } catch (e: Exception) {
-            Log.w(TAG, "Error playing incoming audio chunk: ${e.message}")
+            Log.w(TAG, "Error queuing audio chunk: ${e.message}")
         }
     }
+
 
     fun setMuted(muted: Boolean) {
         isMuted = muted
@@ -204,16 +233,72 @@ class VoiceCallAudioEngine(
         }
     }
 
+    private fun startPlaybackLoop() {
+        playbackJob = engineScope.launch {
+            while (isActive && isRunning) {
+                val track = audioTrack ?: break
+                val chunk = playbackQueue.poll(40, java.util.concurrent.TimeUnit.MILLISECONDS)
+                if (chunk != null && chunk.isNotEmpty()) {
+                    isAryaSpeaking = true
+                    lastAryaSpeechTimestamp = System.currentTimeMillis()
+                    track.write(chunk, 0, chunk.size)
+                } else {
+                    if (isAryaSpeaking && System.currentTimeMillis() - lastAryaSpeechTimestamp > 350L) {
+                        isAryaSpeaking = false
+                    }
+                }
+            }
+        }
+    }
+
     private fun startRecordingLoop() {
         recordingJob = engineScope.launch {
-            val buffer = ByteArray(1024)
+            // 1600 bytes = 800 samples = 50ms at 16kHz (optimal VoIP packetization interval)
+            val buffer = ByteArray(1600)
             while (isActive && isRunning) {
                 val record = audioRecord ?: break
                 val read = record.read(buffer, 0, buffer.size)
                 if (read > 0 && !isMuted) {
-                    val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
-                    val base64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
-                    onAudioChunkRecorded(base64)
+                    val now = System.currentTimeMillis()
+                    val speaking = isAryaSpeaking || (now - lastAryaSpeechTimestamp < 400L)
+
+                    // Calculate RMS of recorded chunk to detect user voice vs speakerphone echo
+                    var sum = 0.0
+                    var i = 0
+                    val numSamples = read / 2
+                    while (i < read - 1) {
+                        val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+                        val shortSample = sample.toShort()
+                        sum += shortSample.toDouble() * shortSample.toDouble()
+                        i += 2
+                    }
+                    val rms = if (numSamples > 0) Math.sqrt(sum / numSamples) else 0.0
+
+                    // Smart Echo Gate:
+                    // When ARYA is speaking through the loudspeaker:
+                    // - Hardware AEC reduces speaker residue into mic to < 2200 RMS.
+                    // - If RMS < 2600, suppress chunk so ARYA does NOT hear her own voice and interrupt herself!
+                    // - If RMS >= 2600, user is speaking over ARYA (barge-in):
+                    //   -> immediately cut off loudspeaker playback and send chunk to Gemini Live!
+                    // When ARYA is silent:
+                    // - Filter low background noise (RMS >= 60) to keep Gemini Live VAD crisp and responsive.
+                    val shouldSend = if (speaking) {
+                        if (rms >= 2600.0) {
+                            clearPlayback()
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        rms >= 60.0
+                    }
+
+
+                    if (shouldSend) {
+                        val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
+                        val base64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
+                        onAudioChunkRecorded(base64)
+                    }
                 }
             }
         }

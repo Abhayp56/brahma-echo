@@ -40,8 +40,14 @@ class BrahmaWebSocketClient(
             send(BrahmaProtocol.callEnd(callId))
         }
         callManager.onSendCallAudio = { callId, base64Chunk ->
-            send(BrahmaProtocol.callAudio(callId, base64Chunk))
+            val sock = socket
+            if (sock != null) {
+                if (sock.queueSize() < 48000L) {
+                    send(BrahmaProtocol.callAudio(callId, base64Chunk))
+                }
+            }
         }
+
     }
 
     private val client = OkHttpClient.Builder()
@@ -297,6 +303,10 @@ class BrahmaWebSocketClient(
                             callManager.handleIncomingAudioChunk(audioData)
                         }
                     }
+                    BrahmaProtocol.CALL_INTERRUPT -> {
+                        callManager.handleInterruption()
+                    }
+
                 }
             }.onFailure {
                 AgentStateStore.setError(it.message)
