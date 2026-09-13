@@ -39,6 +39,7 @@ from core.distributed.protocol import (
 )
 from brahma_connect.gateway.protocol import now_iso
 from cloud.cloud_brain import CloudBrain, RemoteToolDispatcher
+from cloud.cloud_scheduler import CloudScheduler
 from memory.memory_manager import load_memory, update_memory, forget
 from memory.supabase_memory import is_supabase_configured
 
@@ -339,6 +340,7 @@ class CloudPhoneHub:
 
 dispatcher = WebSocketToolDispatcher()
 phone_hub = CloudPhoneHub()
+scheduler = CloudScheduler()
 brain: Optional[CloudBrain] = None
 server_config = load_server_config()
 web_clients: set[WebSocket] = set()
@@ -403,7 +405,7 @@ main_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 def broadcast_whatsapp_event(event_type: str, payload: Any):
-    """Broadcasts real-time WhatsApp events (status, qr, messages) to browser clients."""
+    """Broadcasts real-time WhatsApp events (status, qr, messages) to browser clients and triggers urgent alert calls."""
     global main_loop
     msg = json.dumps({"type": event_type, "data": payload})
     for client in list(web_clients):
@@ -415,6 +417,17 @@ def broadcast_whatsapp_event(event_type: str, payload: Any):
         except Exception:
             pass
 
+    # High Urgency Check: Trigger proactive call for critical WhatsApp messages
+    if event_type == "message" and isinstance(payload, dict):
+        sender = payload.get("push_name") or payload.get("sender") or "WhatsApp contact"
+        text = payload.get("text") or payload.get("body") or ""
+        if text and phone_hub and phone_hub.is_connected:
+            coro = scheduler.check_urgent_message_alert(phone_hub, sender, text)
+            if main_loop and main_loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, main_loop)
+            else:
+                asyncio.create_task(coro)
+
 
 @app.on_event("startup")
 async def on_startup():
@@ -424,6 +437,7 @@ async def on_startup():
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
         phone_hub=phone_hub,
+        scheduler=scheduler,
         on_audio_out=broadcast_audio_to_web,
         on_transcript=broadcast_transcript_to_web,
         on_turn_complete=broadcast_turn_complete_to_web,
@@ -431,6 +445,9 @@ async def on_startup():
     )
     # Start Gemini Live background loop
     asyncio.create_task(brain.run())
+
+    # Start Cloud Scheduler 24/7 background loop
+    asyncio.create_task(scheduler.start_loop(phone_hub, brain))
 
     # Start WhatsApp Gateway
     try:
@@ -874,6 +891,33 @@ async def websocket_phone_companion(websocket: WebSocket):
                     if brain:
                         greeting = f"[Voice call connected with user on phone for: '{reason}'. Greet the user naturally, concisely, and warmly right now to start the live conversation!]"
                         asyncio.create_task(brain.handle_text_command(greeting))
+
+            # 4b. User-Initiated Outbound Call from Android App ("Call ARYA" button)
+            elif msg_type == "call_request":
+                reason = payload.get("reason", "Direct call from Android companion")
+                call_id = new_request_id()
+                phone_hub.active_calls[call_id] = {
+                    "call_id": call_id,
+                    "status": "active",
+                    "caller": "User",
+                    "reason": reason,
+                    "started_at": time.time(),
+                }
+                logger.info(f"📞 User initiated call from phone (call_id={call_id}). Starting live session...")
+                reply = {
+                    "type": "call_answer",
+                    "request_id": req_id,
+                    "timestamp": now_iso(),
+                    "payload": {"call_id": call_id, "status": "active"},
+                }
+                await websocket.send_text(json.dumps(reply))
+                broadcast_phone_status_to_web()
+                if brain:
+                    greeting = (
+                        f"[The user just called you directly from their Android phone (reason: '{reason}'). "
+                        "Greet the user warmly, smartly, and naturally as ARYA right now! Ask how you can assist them!]"
+                    )
+                    asyncio.create_task(brain.handle_text_command(greeting))
 
             # 5. Call Rejected
             elif msg_type == "call_reject":

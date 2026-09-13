@@ -79,3 +79,5 @@ brahma-connect-android/.gradle/
 brahma-connect-android/**/build/
 brahma-connect-android/local.properties
 pairing_qr.png
+*.apk
+config/scheduled_calls.json

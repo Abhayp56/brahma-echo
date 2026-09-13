@@ -31,6 +31,58 @@ from memory.memory_manager import (
 )
 from core.identity import identity
 
+SCHEDULER_TOOL_DECLARATIONS = [
+    {
+        "name": "schedule_reminder_call",
+        "description": (
+            "Schedules a proactive voice call to the user's Android phone at a specific Indian Standard Time (IST). "
+            "Use this when the user says: 'Call me at 4:30 PM', 'Remind me in 20 minutes to take my medicine', "
+            "'Call me tomorrow morning at 9 AM for standup', or 'Alert me when it's time for my meeting'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "time": {
+                    "type": "STRING",
+                    "description": "The target time in IST (e.g., '4:30 PM', '16:30', 'in 15 minutes', 'in 2 hours', '9:00 AM')"
+                },
+                "reason": {
+                    "type": "STRING",
+                    "description": "The exact reason/reminder topic ARYA should speak about when calling the user (e.g., 'Remind boss to submit project report')"
+                },
+                "date": {
+                    "type": "STRING",
+                    "description": "The date for the call, default is 'today'. Can be 'today', 'tomorrow', or 'YYYY-MM-DD'"
+                }
+            },
+            "required": ["time", "reason"]
+        }
+    },
+    {
+        "name": "list_scheduled_reminders",
+        "description": "Lists all upcoming scheduled calls and reminders.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "cancel_scheduled_reminder",
+        "description": "Cancels an upcoming scheduled call by its reminder ID.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "reminder_id": {
+                    "type": "STRING",
+                    "description": "The unique ID of the reminder to cancel"
+                }
+            },
+            "required": ["reminder_id"]
+        }
+    }
+]
+
 logger = logging.getLogger("CloudBrain")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -110,6 +162,7 @@ class CloudBrain:
         self,
         tool_dispatcher: Optional[RemoteToolDispatcher] = None,
         phone_hub: Optional[Any] = None,
+        scheduler: Optional[Any] = None,
         on_audio_out: Optional[Callable[[bytes], None]] = None,
         on_transcript: Optional[Callable[[str, str], None]] = None,
         on_turn_complete: Optional[Callable[[], None]] = None,
@@ -117,6 +170,7 @@ class CloudBrain:
     ):
         self.dispatcher = tool_dispatcher
         self.phone_hub = phone_hub
+        self.scheduler = scheduler
         self.on_audio_out = on_audio_out
         self.on_transcript = on_transcript
         self.on_turn_complete = on_turn_complete
@@ -138,12 +192,15 @@ class CloudBrain:
         mem_str = format_memory_for_prompt(memory)
         sys_prompt = load_system_prompt()
 
-        now = datetime.now()
-        time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
+        from cloud.cloud_scheduler import format_ist_time, get_now_ist
+        now_ist = get_now_ist()
+        time_str = format_ist_time(now_ist)
         time_ctx = (
-            f"[CURRENT DATE & TIME]\n"
+            f"[CURRENT DATE & TIME — INDIAN STANDARD TIME (IST)]\n"
             f"Right now it is: {time_str}\n"
-            f"Use this to calculate exact times for reminders.\n\n"
+            f"TIMEZONE: Asia/Kolkata (IST, UTC+05:30).\n"
+            f"IMPORTANT: The user is in India. All times, schedules, reminders, and daily planning MUST be calculated in Indian Standard Time (IST).\n"
+            f"When the user asks you to call them at a specific time or in X minutes, use the 'schedule_reminder_call' tool.\n\n"
         )
 
         parts = [time_ctx]
@@ -160,16 +217,18 @@ class CloudBrain:
             "TOOL USAGE RULES:\n"
             "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
-            "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
+            "- When asked to schedule a call or reminder (e.g. 'Call me at 5 PM', 'Remind me in 10 minutes'), use 'schedule_reminder_call'.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
         )
+
+        all_tools = list(TOOL_DECLARATIONS) + list(SCHEDULER_TOOL_DECLARATIONS)
 
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             output_audio_transcription={},
             input_audio_transcription={},
             system_instruction="\n".join(parts),
-            tools=[{"function_declarations": TOOL_DECLARATIONS}],
+            tools=[{"function_declarations": all_tools}],
             session_resumption=types.SessionResumptionConfig(),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
@@ -271,6 +330,43 @@ class CloudBrain:
                 name=name,
                 response={"results": results},
             )
+
+        # 1.35 Proactive Call & Reminder Scheduling (IST-aware)
+        if name == "schedule_reminder_call":
+            time_arg = args.get("time", "")
+            reason_arg = args.get("reason", "Reminder")
+            date_arg = args.get("date", "today")
+            if not self.scheduler:
+                from cloud.cloud_scheduler import CloudScheduler
+                self.scheduler = CloudScheduler()
+            reminder = self.scheduler.schedule_call(time_arg, reason_arg, date_arg)
+            display_time = reminder.get("target_time_display", time_arg)
+            msg = f"Done boss! I have scheduled a proactive call to your phone for {display_time} regarding: '{reason_arg}'. I will ring your phone right on time!"
+            return types.FunctionResponse(id=call_id, name=name, response={"result": msg, "reminder": reminder})
+
+        if name == "list_scheduled_reminders":
+            if not self.scheduler:
+                from cloud.cloud_scheduler import CloudScheduler
+                self.scheduler = CloudScheduler()
+            reminders = self.scheduler.list_reminders(status="pending")
+            if not reminders:
+                msg = "You have no upcoming scheduled calls or reminders, boss."
+            else:
+                formatted = [f"• [{r['id']}] {r.get('target_time_display', r.get('target_time_ist'))}: {r['reason']}" for r in reminders]
+                msg = "Upcoming scheduled calls:\n" + "\n".join(formatted)
+            return types.FunctionResponse(id=call_id, name=name, response={"result": msg, "reminders": reminders})
+
+        if name == "cancel_scheduled_reminder":
+            rem_id = args.get("reminder_id", "")
+            if not self.scheduler:
+                from cloud.cloud_scheduler import CloudScheduler
+                self.scheduler = CloudScheduler()
+            success = self.scheduler.cancel_reminder(rem_id)
+            if success:
+                msg = f"Scheduled call [{rem_id}] has been cancelled, boss."
+            else:
+                msg = f"Could not find an active scheduled call with ID [{rem_id}]."
+            return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
 
         # 1.4 Native Direct Voice Call to User's Phone (Direct Cloud Link)
         if name == "call_user_phone":

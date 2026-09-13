@@ -169,6 +169,7 @@ object BrahmaProtocol {
     const val CHAT_MESSAGE = "chat_message"
 
     // Voice Calling Protocol
+    const val CALL_REQUEST = "call_request"
     const val CALL_OFFER = "call_offer"
     const val CALL_ANSWER = "call_answer"
     const val CALL_REJECT = "call_reject"
@@ -202,6 +203,11 @@ object BrahmaProtocol {
     fun chatMessage(text: String): JSONObject = envelope(
         CHAT_MESSAGE,
         JSONObject().put("text", text)
+    )
+
+    fun callRequest(reason: String = "User initiated call"): JSONObject = envelope(
+        CALL_REQUEST,
+        JSONObject().put("reason", reason)
     )
 
     fun callAnswer(callId: String): JSONObject = envelope(

@@ -30,6 +30,9 @@ class BrahmaWebSocketClient(
     private val callManager = com.brahma.connect.call.CallManager.getInstance(context)
 
     init {
+        callManager.onSendCallRequest = { reason ->
+            send(BrahmaProtocol.callRequest(reason))
+        }
         callManager.onSendCallAnswer = { callId ->
             send(BrahmaProtocol.callAnswer(callId))
         }
@@ -277,6 +280,13 @@ class BrahmaWebSocketClient(
                         val timestamp = System.currentTimeMillis()
                         val msg = ChatMessage(msgId, role, text, timestamp, "Sent")
                         AgentStateStore.addChatMessage(msg)
+                    }
+                    BrahmaProtocol.CALL_ANSWER -> {
+                        val payload = root.optJSONObject("payload")
+                        val callId = payload?.optString("call_id")
+                        if (!callId.isNullOrEmpty()) {
+                            callManager.updateCallId(callId)
+                        }
                     }
                     BrahmaProtocol.CALL_OFFER -> {
                         val payload = root.optJSONObject("payload") ?: return

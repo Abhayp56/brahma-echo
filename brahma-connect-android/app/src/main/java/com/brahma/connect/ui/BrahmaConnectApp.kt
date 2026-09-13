@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.brahma.connect.BrahmaConnectForegroundService
@@ -293,7 +294,10 @@ fun BrahmaConnectApp(
                             }
                             context.startActivity(intent)
                         },
-                        onOpenChat = { navController.navigate("chat") }
+                        onOpenChat = { navController.navigate("chat") },
+                        onStartCall = {
+                            com.brahma.connect.call.CallManager.getInstance(context).startOutboundCall("Direct voice call from Android app")
+                        }
                     )
                 }
             }
@@ -530,6 +534,7 @@ private fun ConnectedScreen(
     onDisconnect: () -> Unit,
     onOpenPermissions: () -> Unit,
     onOpenChat: () -> Unit,
+    onStartCall: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp).background(androidx.compose.ui.graphics.Color.Transparent).verticalScroll(rememberScrollState()),
@@ -546,6 +551,53 @@ private fun ConnectedScreen(
                 Text("Network: Wi-Fi")
                 Text("State: $state")
                 Text(status)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        // --- Call ARYA Live Action Card ---
+        Card(
+            onClick = onStartCall,
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = androidx.compose.ui.graphics.Color(0xFF0D3822).copy(alpha = 0.85f),
+                contentColor = androidx.compose.ui.graphics.Color(0xFF4ADE80)
+            ),
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Color(0xFF22C55E).copy(alpha = 0.8f))
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(androidx.compose.ui.graphics.Color(0xFF22C55E).copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📞", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            "Call ARYA",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.White
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Start real-time neural voice call",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.ui.graphics.Color(0xFF86EFAC)
+                        )
+                    }
+                }
+                Text("LIVE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = androidx.compose.ui.graphics.Color(0xFF22C55E))
             }
         }
         Spacer(Modifier.height(16.dp))

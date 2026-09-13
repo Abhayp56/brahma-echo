@@ -34,6 +34,7 @@ class CallManager private constructor(private val context: Context) {
     private var speechEngine: VoiceCallSpeechEngine? = null
 
     // Outbound callback to WebSocket client
+    var onSendCallRequest: ((reason: String) -> Unit)? = null
     var onSendCallAnswer: ((callId: String) -> Unit)? = null
     var onSendCallReject: ((callId: String) -> Unit)? = null
     var onSendCallEnd: ((callId: String) -> Unit)? = null
@@ -63,6 +64,46 @@ class CallManager private constructor(private val context: Context) {
                 }
             }
         )
+    }
+
+    fun startOutboundCall(reason: String = "Direct call from Android app") {
+        if (AgentStateStore.callState.value == CallState.ACTIVE) {
+            Log.w(TAG, "Already in an active call.")
+            return
+        }
+
+        stopRinging()
+        val callId = "user-call-" + System.currentTimeMillis()
+        val offer = CallOfferPayload(
+            callId = callId,
+            callerName = "ARYA",
+            reason = reason,
+            timestamp = System.currentTimeMillis()
+        )
+        currentOffer = offer
+        AgentStateStore.setCallState(CallState.ACTIVE, offer)
+
+        // Launch CallActivity with full-screen intent
+        val intent = Intent(context, CallActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(CallActivity.EXTRA_CALL_ID, offer.callId)
+            putExtra(CallActivity.EXTRA_CALLER_NAME, offer.callerName)
+            putExtra(CallActivity.EXTRA_REASON, offer.reason)
+        }
+        context.startActivity(intent)
+
+        audioEngine?.start(enableMicRecording = false)
+        speechEngine?.start()
+
+        onSendCallRequest?.invoke(reason)
+        Log.i(TAG, "Outbound call started to ARYA: $callId (reason: $reason)")
+    }
+
+    fun updateCallId(newCallId: String) {
+        currentOffer?.let { offer ->
+            currentOffer = offer.copy(callId = newCallId)
+            Log.i(TAG, "Call ID updated to: $newCallId")
+        }
     }
 
     fun handleIncomingCallOffer(offer: CallOfferPayload) {
