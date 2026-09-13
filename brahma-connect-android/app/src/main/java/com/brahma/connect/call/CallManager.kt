@@ -91,7 +91,7 @@ class CallManager private constructor(private val context: Context) {
         val offer = currentOffer ?: return
         stopRinging()
         AgentStateStore.setCallState(CallState.ACTIVE, offer)
-        audioEngine?.start()
+        audioEngine?.start(enableMicRecording = false)
         speechEngine?.start()
         onSendCallAnswer?.invoke(offer.callId)
         Log.i(TAG, "Call accepted: ${offer.callId}")

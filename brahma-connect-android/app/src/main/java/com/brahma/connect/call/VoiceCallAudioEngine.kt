@@ -48,14 +48,18 @@ class VoiceCallAudioEngine(
     private var isRunning = false
     private var isMuted = false
 
-    fun start() {
+    fun start(enableMicRecording: Boolean = false) {
         if (isRunning) return
         isRunning = true
         setupAudioRouting()
         setupAudioTrack()
-        setupAudioRecord()
-        startRecordingLoop()
-        Log.i(TAG, "VoiceCallAudioEngine started.")
+        if (enableMicRecording) {
+            setupAudioRecord()
+            startRecordingLoop()
+            Log.i(TAG, "VoiceCallAudioEngine started with raw mic recording enabled.")
+        } else {
+            Log.i(TAG, "VoiceCallAudioEngine started (Playback track & routing active; mic 100% dedicated to speech engine).")
+        }
     }
 
     fun stop() {

@@ -28,6 +28,7 @@ class VoiceCallSpeechEngine(
     private var isPausedForPlayback = false
     private var isListeningNow = false
     private var isMutedByEngine = false
+    private var useOnDevice = true
     private var retryCount = 0
 
     fun start() {
@@ -36,9 +37,10 @@ class VoiceCallSpeechEngine(
             isRunning = true
             isPausedForPlayback = false
             retryCount = 0
+            useOnDevice = true
             initRecognizer()
             startListeningInternal()
-            Log.i(TAG, "VoiceCallSpeechEngine started (On-Device Fast Turn Mode, Beep Suppressed).")
+            Log.i(TAG, "VoiceCallSpeechEngine started (Fast Turn Mode, Mic Dedicated).")
         }
     }
 
@@ -135,12 +137,18 @@ class VoiceCallSpeechEngine(
         } catch (e: Exception) {
             // Ignore
         }
-        speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-        ) {
-            Log.d(TAG, "Using on-device SpeechRecognizer (Android 12+)")
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        } else {
+        speechRecognizer = try {
+            if (useOnDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            ) {
+                Log.d(TAG, "Using on-device SpeechRecognizer (Android 12+)")
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            } else {
+                Log.d(TAG, "Using standard SpeechRecognizer")
+                SpeechRecognizer.createSpeechRecognizer(context)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Fallback to standard createSpeechRecognizer: ${e.message}")
             SpeechRecognizer.createSpeechRecognizer(context)
         }.apply {
             setRecognitionListener(CallRecognitionListener())
@@ -164,11 +172,13 @@ class VoiceCallSpeechEngine(
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                // Conversational silence parameters
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
+                if (useOnDevice) {
+                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                }
+                // Fast conversational turn detection (450ms silence)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
             }
 
             muteBeepStreams()
@@ -235,7 +245,15 @@ class VoiceCallSpeechEngine(
 
             if (!isRunning || isPausedForPlayback) return
 
-            if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+            if (error == SpeechRecognizer.ERROR_CLIENT ||
+                error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                error == SpeechRecognizer.ERROR_SERVER ||
+                error == SpeechRecognizer.ERROR_AUDIO
+            ) {
+                if (useOnDevice) {
+                    Log.i(TAG, "Falling back from on-device to standard SpeechRecognizer")
+                    useOnDevice = false
+                }
                 initRecognizer()
                 scheduleRestart(250)
             } else {
