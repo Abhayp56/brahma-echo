@@ -2,6 +2,7 @@ package com.brahma.connect.call
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -9,6 +10,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -127,17 +129,44 @@ class VoiceCallAudioEngine(
         }
     }
 
+    private var audioFocusRequest: AudioFocusRequest? = null
+
     private fun setupAudioRouting() {
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = true
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener { /* Hold voice call focus */ }
+                    .build()
+                audioFocusRequest = focus
+                audioManager.requestAudioFocus(focus)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to set audio mode IN_COMMUNICATION: ${e.message}")
+            Log.w(TAG, "Failed to set audio mode IN_COMMUNICATION or request audio focus: ${e.message}")
         }
     }
 
     private fun restoreAudioRouting() {
         try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+                audioFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(null)
+            }
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
         } catch (e: Exception) {

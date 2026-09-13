@@ -23,11 +23,11 @@ class VoiceCallSpeechEngine(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private val savedVolumes = mutableMapOf<Int, Int>()
     private var speechRecognizer: SpeechRecognizer? = null
     private var isRunning = false
     private var isPausedForPlayback = false
     private var isListeningNow = false
-    private var isMutedByEngine = false
     private var useOnDevice = true
     private var retryCount = 0
 
@@ -38,9 +38,10 @@ class VoiceCallSpeechEngine(
             isPausedForPlayback = false
             retryCount = 0
             useOnDevice = true
+            muteCallStreams()
             initRecognizer()
             startListeningInternal()
-            Log.i(TAG, "VoiceCallSpeechEngine started (Fast Turn Mode, Mic Dedicated).")
+            Log.i(TAG, "VoiceCallSpeechEngine started (Fast Turn Mode, Beeps Suppressed).")
         }
     }
 
@@ -51,7 +52,6 @@ class VoiceCallSpeechEngine(
             isPausedForPlayback = false
             isListeningNow = false
             mainHandler.removeCallbacksAndMessages(null)
-            muteBeepStreams()
             try {
                 speechRecognizer?.stopListening()
                 speechRecognizer?.cancel()
@@ -60,7 +60,7 @@ class VoiceCallSpeechEngine(
                 Log.w(TAG, "Error destroying SpeechRecognizer: ${e.message}")
             }
             speechRecognizer = null
-            mainHandler.postDelayed({ unmuteBeepStreams() }, 200)
+            restoreCallStreams()
             Log.i(TAG, "VoiceCallSpeechEngine stopped.")
         }
     }
@@ -71,13 +71,11 @@ class VoiceCallSpeechEngine(
             isPausedForPlayback = true
             isListeningNow = false
             mainHandler.removeCallbacksAndMessages(null)
-            muteBeepStreams()
             try {
                 speechRecognizer?.cancel()
             } catch (e: Exception) {
                 Log.w(TAG, "Error pausing SpeechRecognizer: ${e.message}")
             }
-            mainHandler.postDelayed({ unmuteBeepStreams() }, 200)
             Log.d(TAG, "SpeechRecognizer paused (ARYA is speaking).")
         }
     }
@@ -97,38 +95,40 @@ class VoiceCallSpeechEngine(
         }
     }
 
-    private fun muteBeepStreams() {
-        if (audioManager == null || isMutedByEngine) return
-        isMutedByEngine = true
+    private fun muteCallStreams() {
+        if (audioManager == null) return
         val streams = intArrayOf(
-            AudioManager.STREAM_NOTIFICATION,
+            AudioManager.STREAM_MUSIC,
             AudioManager.STREAM_SYSTEM,
-            AudioManager.STREAM_MUSIC
+            AudioManager.STREAM_NOTIFICATION
         )
         for (s in streams) {
             try {
-                audioManager.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
+                if (!savedVolumes.containsKey(s)) {
+                    savedVolumes[s] = audioManager.getStreamVolume(s)
+                }
+                audioManager.setStreamVolume(s, 0, 0)
             } catch (e: Exception) {
-                // Ignore if restricted by system policy
+                try {
+                    audioManager.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
+                } catch (e2: Exception) {
+                    // Ignore if restricted by notification policy
+                }
             }
         }
     }
 
-    private fun unmuteBeepStreams() {
-        if (audioManager == null || !isMutedByEngine) return
-        isMutedByEngine = false
-        val streams = intArrayOf(
-            AudioManager.STREAM_NOTIFICATION,
-            AudioManager.STREAM_SYSTEM,
-            AudioManager.STREAM_MUSIC
-        )
-        for (s in streams) {
+    private fun restoreCallStreams() {
+        if (audioManager == null) return
+        for ((stream, volume) in savedVolumes) {
             try {
-                audioManager.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, 0)
+                audioManager.setStreamVolume(stream, volume, 0)
+                audioManager.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
             } catch (e: Exception) {
-                // Ignore if restricted by system policy
+                // Ignore
             }
         }
+        savedVolumes.clear()
     }
 
     private fun initRecognizer() {
@@ -172,6 +172,13 @@ class VoiceCallSpeechEngine(
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                putExtra("calling_package", context.packageName)
+                // Suppress Assistant earcons via Dictation / Silent mode flags
+                putExtra("android.speech.extra.DICTATION_MODE", true)
+                putExtra("android.speech.extra.BEEP", false)
+                putExtra("android.speech.extras.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 250L)
+                putExtra("android.speech.extras.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 450L)
+                putExtra("android.speech.extras.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 450L)
                 if (useOnDevice) {
                     putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 }
@@ -181,12 +188,9 @@ class VoiceCallSpeechEngine(
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
             }
 
-            muteBeepStreams()
             speechRecognizer?.startListening(intent)
             isListeningNow = true
-            mainHandler.postDelayed({ unmuteBeepStreams() }, 350)
         } catch (e: Exception) {
-            unmuteBeepStreams()
             Log.w(TAG, "Failed to startListening: ${e.message}")
             scheduleRestart(500)
         }
@@ -206,7 +210,6 @@ class VoiceCallSpeechEngine(
         override fun onReadyForSpeech(params: Bundle?) {
             isListeningNow = true
             retryCount = 0
-            mainHandler.postDelayed({ unmuteBeepStreams() }, 100)
         }
 
         override fun onBeginningOfSpeech() {
@@ -222,13 +225,10 @@ class VoiceCallSpeechEngine(
         override fun onEndOfSpeech() {
             Log.d(TAG, "User finished speaking. Processing on-device transcript...")
             isListeningNow = false
-            muteBeepStreams()
-            mainHandler.postDelayed({ unmuteBeepStreams() }, 350)
         }
 
         override fun onError(error: Int) {
             isListeningNow = false
-            unmuteBeepStreams()
             val errorMsg = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH -> "No match (silence)"
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout (silence)"
@@ -264,7 +264,6 @@ class VoiceCallSpeechEngine(
 
         override fun onResults(results: Bundle?) {
             isListeningNow = false
-            unmuteBeepStreams()
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             val recognizedText = matches?.firstOrNull()?.trim()
 
