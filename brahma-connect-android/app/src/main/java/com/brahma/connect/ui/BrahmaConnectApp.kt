@@ -282,6 +282,10 @@ fun BrahmaConnectApp(
                         logs = logs,
                         status = status,
                         onDisconnect = {
+                            storage.clearCredential()
+                            AgentStateStore.setCredential(null)
+                            AgentStateStore.setPairingOffer(null)
+                            AgentStateStore.setGateway(null)
                             context.startService(Intent(context, BrahmaConnectForegroundService::class.java).apply {
                                 action = BrahmaConnectForegroundService.ACTION_STOP
                             })
@@ -297,6 +301,16 @@ fun BrahmaConnectApp(
                         onOpenChat = { navController.navigate("chat") },
                         onStartCall = {
                             com.brahma.connect.call.CallManager.getInstance(context).startOutboundCall("Direct voice call from Android app")
+                        },
+                        onScanQr = {
+                            storage.clearCredential()
+                            AgentStateStore.setCredential(null)
+                            AgentStateStore.setPairingOffer(null)
+                            AgentStateStore.setGateway(null)
+                            context.startService(Intent(context, BrahmaConnectForegroundService::class.java).apply {
+                                action = BrahmaConnectForegroundService.ACTION_STOP
+                            })
+                            navController.navigate("scanner")
                         }
                     )
                 }
@@ -535,21 +549,32 @@ private fun ConnectedScreen(
     onOpenPermissions: () -> Unit,
     onOpenChat: () -> Unit,
     onStartCall: () -> Unit,
+    onScanQr: () -> Unit,
 ) {
+    val (stateColor, stateText) = when (state) {
+        ConnectionState.CONNECTED -> androidx.compose.ui.graphics.Color(0xFF22C55E) to "● Connected to ${gateway?.name ?: "Brahma"}"
+        ConnectionState.CONNECTING -> androidx.compose.ui.graphics.Color(0xFFFACC15) to "● Connecting to ${gateway?.name ?: "Brahma"}..."
+        ConnectionState.RECONNECTING -> androidx.compose.ui.graphics.Color(0xFFF97316) to "● Reconnecting..."
+        ConnectionState.DISCONNECTED -> androidx.compose.ui.graphics.Color(0xFFEF4444) to "● Disconnected"
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp).background(androidx.compose.ui.graphics.Color.Transparent).verticalScroll(rememberScrollState()),
     ) {
         Text("BRAHMA CONNECT", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = androidx.compose.ui.graphics.Color.White)
         Spacer(Modifier.height(8.dp))
-        Text("● Connected", color = MaterialTheme.colorScheme.primary)
+        Text(stateText, color = stateColor, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(20.dp))
         Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f), contentColor = androidx.compose.ui.graphics.Color.White), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))) {
             Column(Modifier.padding(16.dp)) {
-                Text(gateway?.name ?: "Brahma PC", fontWeight = FontWeight.Bold)
-                Text(credential.deviceName)
-                Text("Battery status is reported by the agent.")
-                Text("Network: Wi-Fi")
-                Text("State: $state")
+                Text(gateway?.name ?: "Brahma PC", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                gateway?.let { gw ->
+                    val isCloud = gw.ssl || gw.host.contains("onrender.com")
+                    Text("Type: ${if (isCloud) "☁️ Cloud Server (Render)" else "💻 Local PC"}", color = MaterialTheme.colorScheme.primary)
+                    Text("Host: ${gw.host}")
+                }
+                Text("Device: ${credential.deviceName}")
+                Text("State: $state", color = stateColor, fontWeight = FontWeight.Bold)
                 Text(status)
             }
         }
@@ -631,7 +656,11 @@ private fun ConnectedScreen(
         Spacer(Modifier.height(16.dp))
         
         Button(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) { Text("Disconnect") }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
+        FilledTonalButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) {
+            Text("📷 Scan QR / Switch to Cloud Server")
+        }
+        Spacer(Modifier.height(10.dp))
         OutlinedButton(
             onClick = onOpenPermissions, 
             modifier = Modifier.fillMaxWidth(),

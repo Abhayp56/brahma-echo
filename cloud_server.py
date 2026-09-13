@@ -418,10 +418,15 @@ def broadcast_whatsapp_event(event_type: str, payload: Any):
             pass
 
     # High Urgency Check: Trigger proactive call for critical WhatsApp messages
-    if event_type == "message" and isinstance(payload, dict):
-        sender = payload.get("push_name") or payload.get("sender") or "WhatsApp contact"
+    if event_type in ("whatsapp_message", "message") and isinstance(payload, dict):
+        sender = payload.get("sender") or payload.get("push_name") or "WhatsApp contact"
         text = payload.get("text") or payload.get("body") or ""
-        if text and phone_hub and phone_hub.is_connected:
+        phone_online = phone_hub.is_connected if phone_hub else False
+        logger.info(
+            f"🔍 Checking WhatsApp urgency for message from '{sender}': '{text[:60]}' "
+            f"(phone_hub_connected={phone_online})"
+        )
+        if text and phone_hub:
             coro = scheduler.check_urgent_message_alert(phone_hub, sender, text)
             if main_loop and main_loop.is_running():
                 asyncio.run_coroutine_threadsafe(coro, main_loop)

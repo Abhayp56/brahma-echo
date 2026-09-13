@@ -79,6 +79,25 @@ class TestCloudScheduler(unittest.TestCase):
         self.assertIn("Urgent", hub.calls_made[0]["caller"])
         self.assertIn("Production server down", hub.calls_made[0]["reason"])
 
+    def test_parse_after_x_minutes(self):
+        parsed = self.scheduler.parse_time_to_ist("after 5 minutes")
+        self.assertIsNotNone(parsed)
+        now = get_now_ist()
+        diff = (parsed - now).total_seconds()
+        self.assertAlmostEqual(diff, 5 * 60, delta=5)
+
+        parsed_short = self.scheduler.parse_time_to_ist("2 mins")
+        self.assertIsNotNone(parsed_short)
+        diff_short = (parsed_short - now).total_seconds()
+        self.assertAlmostEqual(diff_short, 2 * 60, delta=5)
+
+    def test_deduplicate_schedule_call(self):
+        rem1 = self.scheduler.schedule_call("in 10 minutes", "Drink water")
+        rem2 = self.scheduler.schedule_call("in 10 minutes", "Drink water")
+        self.assertEqual(rem1["id"], rem2["id"])
+        all_reminders = self.scheduler.list_reminders()
+        self.assertEqual(len(all_reminders), 1)
+
     def test_non_urgent_whatsapp_no_call(self):
         hub = MockPhoneHub(connected=True)
         coro = self.scheduler.check_urgent_message_alert(

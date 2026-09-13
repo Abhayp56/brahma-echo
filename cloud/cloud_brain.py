@@ -217,7 +217,9 @@ class CloudBrain:
             "TOOL USAGE RULES:\n"
             "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
-            "- When asked to schedule a call or reminder (e.g. 'Call me at 5 PM', 'Remind me in 10 minutes'), use 'schedule_reminder_call'.\n"
+            "- CRITICAL: You have NO internal timers and CANNOT wait or remember to call the user on your own. "
+            "Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM', 'Remind me after 10 mins'), "
+            "you MUST execute the tool 'schedule_reminder_call'. Do NOT just reply saying you will call them without executing the tool!\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
         )
 
@@ -252,6 +254,26 @@ class CloudBrain:
         """Inject a direct text command into the live session."""
         if not self.session:
             return None
+
+        # Direct intent interception for scheduled calls to guarantee 100% execution
+        try:
+            lower_text = text.lower().strip()
+            if any(trig in lower_text for trig in ("call me", "remind me", "alert me")):
+                pattern = r"(?:call me|remind me|alert me)\s+(?:in|after|at)\s+([0-9a-zA-Z\:\s]+?)(?:\s+(?:to|about|for)\s+(.*)|$)"
+                sched_match = re.search(pattern, text, re.IGNORECASE)
+                if sched_match:
+                    raw_time = sched_match.group(1).strip()
+                    raw_reason = (sched_match.group(2) or "Reminder").strip()
+                    if not self.scheduler:
+                        from cloud.cloud_scheduler import CloudScheduler
+                        self.scheduler = CloudScheduler()
+                    dt = self.scheduler.parse_time_to_ist(raw_time)
+                    if dt:
+                        rem = self.scheduler.schedule_call(raw_time, raw_reason)
+                        self.log(f"⏰ Proactive call scheduled via intent: [{rem['id']}] for {rem['target_time_display']}: '{raw_reason}'")
+        except Exception as ex:
+            logger.warning(f"Error in proactive call intent interceptor: {ex}")
+
         future: Optional[asyncio.Future] = None
         if wait_for_response:
             loop = self._loop or asyncio.get_event_loop()
