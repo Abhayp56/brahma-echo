@@ -31,19 +31,38 @@ class CallManager private constructor(private val context: Context) {
     private var currentOffer: CallOfferPayload? = null
     private var ringtone: Ringtone? = null
     private var audioEngine: VoiceCallAudioEngine? = null
+    private var speechEngine: VoiceCallSpeechEngine? = null
 
     // Outbound callback to WebSocket client
     var onSendCallAnswer: ((callId: String) -> Unit)? = null
     var onSendCallReject: ((callId: String) -> Unit)? = null
     var onSendCallEnd: ((callId: String) -> Unit)? = null
     var onSendCallAudio: ((callId: String, base64Chunk: String) -> Unit)? = null
+    var onSendCallSpeechText: ((callId: String, text: String) -> Unit)? = null
 
     init {
         audioEngine = VoiceCallAudioEngine(context) { chunkBase64 ->
             currentOffer?.let { offer ->
                 onSendCallAudio?.invoke(offer.callId, chunkBase64)
             }
+        }.apply {
+            onPlaybackStarted = {
+                speechEngine?.pauseListening()
+            }
+            onPlaybackFinished = {
+                speechEngine?.resumeListening()
+            }
         }
+
+        speechEngine = VoiceCallSpeechEngine(
+            context = context,
+            onSpeechRecognized = { text ->
+                currentOffer?.let { offer ->
+                    Log.i(TAG, "Sending transcribed speech text for call ${offer.callId}: '$text'")
+                    onSendCallSpeechText?.invoke(offer.callId, text)
+                }
+            }
+        )
     }
 
     fun handleIncomingCallOffer(offer: CallOfferPayload) {
@@ -73,6 +92,7 @@ class CallManager private constructor(private val context: Context) {
         stopRinging()
         AgentStateStore.setCallState(CallState.ACTIVE, offer)
         audioEngine?.start()
+        speechEngine?.start()
         onSendCallAnswer?.invoke(offer.callId)
         Log.i(TAG, "Call accepted: ${offer.callId}")
     }
@@ -81,6 +101,7 @@ class CallManager private constructor(private val context: Context) {
         val offer = currentOffer ?: return
         stopRinging()
         audioEngine?.stop()
+        speechEngine?.stop()
         AgentStateStore.setCallState(CallState.ENDED, offer)
         onSendCallReject?.invoke(offer.callId)
         currentOffer = null
@@ -92,6 +113,7 @@ class CallManager private constructor(private val context: Context) {
         val offer = currentOffer
         stopRinging()
         audioEngine?.stop()
+        speechEngine?.stop()
         if (offer != null) {
             onSendCallEnd?.invoke(offer.callId)
         }
@@ -105,6 +127,7 @@ class CallManager private constructor(private val context: Context) {
         if (currentOffer?.callId == callId || currentOffer == null) {
             stopRinging()
             audioEngine?.stop()
+            speechEngine?.stop()
             currentOffer = null
             AgentStateStore.setCallState(CallState.ENDED)
             AgentStateStore.setCallState(CallState.IDLE)
@@ -118,15 +141,18 @@ class CallManager private constructor(private val context: Context) {
         }
     }
 
-    fun handleInterruption() {
-        if (AgentStateStore.callState.value == CallState.ACTIVE) {
-            audioEngine?.clearPlayback()
-        }
+    fun handleTurnComplete() {
+        audioEngine?.notifyTurnComplete()
+        speechEngine?.resumeListening()
     }
-
 
     fun setMuted(muted: Boolean) {
         audioEngine?.setMuted(muted)
+        if (muted) {
+            speechEngine?.pauseListening()
+        } else {
+            speechEngine?.resumeListening()
+        }
     }
 
     fun setSpeakerphoneOn(speakerOn: Boolean) {

@@ -125,8 +125,6 @@ class CloudBrain:
         self.session = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self.audio_out_queue: asyncio.Queue = asyncio.Queue()
-        self.audio_in_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
-        self._in_worker_task: Optional[asyncio.Task] = None
         self.is_running = False
         self.is_speaking = False
         self._pending_text_futures: List[asyncio.Future] = []
@@ -164,9 +162,6 @@ class CloudBrain:
             "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
             "- Use 'autonomous_operator' ONLY when explicitly asked for visual/autonomous navigation or when no direct tool exists.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate, competing, or overlapping tool calls simultaneously.\n"
-            "VOICE CALL CONVERSATIONAL RULES:\n"
-            "- Speak naturally, concisely, and crisply in 1 to 2 sentences per turn so live conversations feel instant, energetic, and engaging.\n"
-            "- Only invoke tools when the user gives a clear, explicit instruction to perform an action. Do NOT invoke tools for casual remarks, emotional expressions, or general chit-chat.\n"
         )
 
         return types.LiveConnectConfig(
@@ -184,35 +179,15 @@ class CloudBrain:
         )
 
     async def handle_incoming_audio(self, pcm_chunk: bytes):
-        """Feed incoming audio from phone or user mic into Gemini Live instantly with zero latency buildup."""
-        if not self.session or not pcm_chunk:
+        """Feed incoming audio from laptop or user mic into Gemini Live."""
+        if not self.session:
             return
         try:
-            self.audio_in_queue.put_nowait(pcm_chunk)
-        except asyncio.QueueFull:
-            # Discard oldest packet to ensure conversation remains real-time (< 1.2s max latency)
-            try:
-                self.audio_in_queue.get_nowait()
-                self.audio_in_queue.put_nowait(pcm_chunk)
-            except Exception:
-                pass
-
-    async def _audio_in_worker(self):
-        """Dedicated background worker forwarding user mic audio chunks sequentially to Gemini Live."""
-        while self.is_running:
-            try:
-                chunk = await self.audio_in_queue.get()
-                if not chunk:
-                    continue
-                if self.session:
-                    await self.session.send_realtime_input(
-                        media={"data": chunk, "mime_type": "audio/pcm;rate=16000"}
-                    )
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.debug(f"Audio in worker error: {e}")
-
+            await self.session.send_realtime_input(
+                media={"data": pcm_chunk, "mime_type": "audio/pcm;rate=16000"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to forward realtime audio: {e}")
 
     async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
@@ -549,9 +524,6 @@ class CloudBrain:
                 async with client.aio.live.connect(model=LIVE_MODEL, config=config) as session:
                     self.session = session
                     self.log("🟢 Gemini Live API session connected and online.")
-                    if self._in_worker_task and not self._in_worker_task.done():
-                        self._in_worker_task.cancel()
-                    self._in_worker_task = asyncio.create_task(self._audio_in_worker())
 
                     out_buf, in_buf = [], []
                     while True:
@@ -564,16 +536,6 @@ class CloudBrain:
                             # Handle transcriptions
                             if response.server_content:
                                 sc = response.server_content
-                                if getattr(sc, "interrupted", False):
-                                    self.log("⚡ Gemini Live detected user interruption. Flushed speech queue.")
-                                    while not self.audio_in_queue.empty():
-                                        try:
-                                            self.audio_in_queue.get_nowait()
-                                        except Exception:
-                                            break
-                                    if self.phone_hub and hasattr(self.phone_hub, "send_interruption"):
-                                        asyncio.create_task(self.phone_hub.send_interruption())
-
                                 if sc.output_transcription and sc.output_transcription.text:
                                     txt = sc.output_transcription.text.strip()
                                     if txt:
@@ -592,13 +554,6 @@ class CloudBrain:
                                         in_buf.append(txt)
 
                                 if sc.turn_complete:
-                                    # Clear stale mic queue so trailing noise does not trigger a turn
-                                    while not self.audio_in_queue.empty():
-                                        try:
-                                            self.audio_in_queue.get_nowait()
-                                        except Exception:
-                                            break
-
                                     full_in = " ".join(in_buf).strip()
                                     if full_in:
                                         self.log(f"User: {full_in}")
@@ -634,13 +589,5 @@ class CloudBrain:
 
             except Exception as exc:
                 self.log(f"⚠️ Gemini Live disconnected: {exc}. Reconnecting in 5s...")
-                if self._in_worker_task and not self._in_worker_task.done():
-                    self._in_worker_task.cancel()
-                self._in_worker_task = None
                 self.session = None
-                while not self.audio_in_queue.empty():
-                    try:
-                        self.audio_in_queue.get_nowait()
-                    except Exception:
-                        break
                 await asyncio.sleep(5)

@@ -27,6 +27,8 @@ class ProtocolTypes:
     CALL_REJECT = "call_reject"
     CALL_END = "call_end"
     CALL_AUDIO = "call_audio"
+    CALL_SPEECH_TEXT = "call_speech_text"
+    CALL_TURN_COMPLETE = "call_turn_complete"
 
 
 def now_iso() -> str:
