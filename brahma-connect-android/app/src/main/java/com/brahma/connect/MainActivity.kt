@@ -9,6 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import android.content.Context
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import com.brahma.connect.core.AgentStateStore
 import com.brahma.connect.pairing.PairingStorage
 import com.brahma.connect.ui.BrahmaConnectApp
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
         ensureCameraPermission()
         ensureAudioPermission()
         ensureContactsPermission()
+        ensureBatteryOptimizationExemption()
         setContent {
             BrahmaConnectTheme {
                 BrahmaConnectApp(
@@ -126,6 +131,22 @@ class MainActivity : ComponentActivity() {
     private fun ensureContactsPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
             contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+        }
+    }
+
+    private fun ensureBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Could not request ignore battery optimizations: ${e.message}")
+            }
         }
     }
 

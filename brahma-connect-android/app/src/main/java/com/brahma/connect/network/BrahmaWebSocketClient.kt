@@ -21,6 +21,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class BrahmaWebSocketClient(
     private val context: Context,
@@ -62,6 +68,8 @@ class BrahmaWebSocketClient(
     private var manualDisconnect = false
     private var reconnectAttempt = 0
     private var lastConnectUptime = 0L
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var reconnectJob: Job? = null
 
     fun connect(endpoint: GatewayEndpoint, credential: DeviceCredential? = storage.loadCredential(), offer: PairingOffer? = null) {
         if (socket != null && currentEndpoint == endpoint) {
@@ -103,6 +111,7 @@ class BrahmaWebSocketClient(
 
     fun disconnect() {
         manualDisconnect = true
+        reconnectJob?.cancel()
         socket?.close(1000, "Disconnected by user")
         socket = null
         AgentStateStore.setConnectionState(ConnectionState.DISCONNECTED)
@@ -111,21 +120,34 @@ class BrahmaWebSocketClient(
 
     private fun reconnectLater() {
         if (manualDisconnect) return
-        val endpoint = currentEndpoint ?: return
+        val endpoint = currentEndpoint ?: run {
+            val cred = storage.loadCredential()
+            if (cred != null && (cred.gatewayHost.isNotBlank() || cred.gatewayUrl.isNotBlank())) {
+                val isCloud = cred.ssl || cred.gatewayUrl.contains("onrender.com")
+                GatewayEndpoint(
+                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    host = cred.gatewayHost,
+                    port = cred.gatewayPort,
+                    ssl = cred.ssl,
+                    url = cred.gatewayUrl,
+                )
+            } else null
+        } ?: return
+
         reconnectAttempt += 1
         AgentStateStore.setConnectionState(ConnectionState.RECONNECTING)
-        val delayMs = min(30_000L, 1_000L * (1 shl min(reconnectAttempt, 5)))
+        val baseDelay = min(30_000L, 1_000L * (1 shl min(reconnectAttempt, 5)))
+        val jitter = (Math.random() * 2000).toLong()
+        val delayMs = baseDelay + jitter
         AgentStateStore.setStatus("Reconnecting in ${delayMs / 1000}s")
-        Thread {
-            try {
-                Thread.sleep(delayMs)
-            } catch (_: InterruptedException) {
-                return@Thread
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(delayMs)
+            if (!manualDisconnect) {
+                val cred = currentCredential ?: storage.loadCredential()
+                connect(endpoint, cred, currentOffer)
             }
-            if (!manualDisconnect && currentEndpoint == endpoint) {
-                connect(endpoint, currentCredential, currentOffer)
-            }
-        }.start()
+        }
     }
 
     private fun send(json: JSONObject) {

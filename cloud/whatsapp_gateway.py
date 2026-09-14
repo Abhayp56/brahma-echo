@@ -29,6 +29,8 @@ if not hasattr(typing, "Self"):
         pass
 
 import qrcode
+import gzip
+import sqlite3
 
 from cloud.whatsapp_conversations import (
     clean_phone_number,
@@ -99,6 +101,8 @@ class WhatsAppGateway:
         self._event_listeners: List[Callable[[str, Any], None]] = []
         self._lock = threading.Lock()
         self.is_running = False
+        self._stop_requested = False
+        self._last_backup_time = 0.0
 
         self._load_config()
 
@@ -141,6 +145,79 @@ class WhatsAppGateway:
             except Exception as e:
                 logger.warning(f"Error in WhatsApp event listener: {e}")
 
+    def backup_session_to_supabase(self) -> bool:
+        """Compress and backup whatsapp_session.db to Supabase cloud vault."""
+        if not SESSION_PATH.exists() or SESSION_PATH.stat().st_size == 0:
+            return False
+        try:
+            from memory.supabase_memory import save_or_update_memory_supabase
+
+            # Checkpoint WAL if present so all changes are merged into the main db file
+            try:
+                conn = sqlite3.connect(str(SESSION_PATH), timeout=5)
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.close()
+            except Exception:
+                pass
+
+            raw_bytes = SESSION_PATH.read_bytes()
+            if len(raw_bytes) == 0:
+                return False
+
+            compressed = gzip.compress(raw_bytes, compresslevel=9)
+            encoded_str = base64.b64encode(compressed).decode("ascii")
+
+            ok = save_or_update_memory_supabase(
+                category="system_session",
+                key_name="whatsapp_session",
+                value=encoded_str,
+                confidence=10,
+            )
+            if ok:
+                self._last_backup_time = time.time()
+                logger.info(
+                    f"💾 Successfully backed up WhatsApp session ({len(raw_bytes)} -> {len(compressed)} bytes) "
+                    "to Supabase cloud vault!"
+                )
+            return ok
+        except Exception as e:
+            logger.warning(f"Failed to backup WhatsApp session to Supabase: {e}")
+            return False
+
+    def restore_session_from_supabase(self) -> bool:
+        """Fetch and restore whatsapp_session.db from Supabase if available."""
+        try:
+            from memory.supabase_memory import get_supabase_credentials, _get_headers
+            url, key = get_supabase_credentials()
+            if not url or not key:
+                return False
+
+            import requests
+            endpoint = f"{url}/rest/v1/ai_memories"
+            params = {
+                "user_id": "eq.default_user",
+                "category": "eq.system_session",
+                "key": "eq.whatsapp_session",
+                "select": "value,updated_at",
+            }
+            resp = requests.get(endpoint, headers=_get_headers(key), params=params, timeout=10)
+            if resp.status_code == 200:
+                rows = resp.json()
+                if rows and rows[0].get("value"):
+                    encoded_str = rows[0]["value"]
+                    compressed = base64.b64decode(encoded_str)
+                    raw_bytes = gzip.decompress(compressed)
+                    SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                    SESSION_PATH.write_bytes(raw_bytes)
+                    logger.info(
+                        f"✅ Successfully restored WhatsApp session ({len(raw_bytes)} bytes) "
+                        "from Supabase cloud vault! Reconnection will proceed without QR scan."
+                    )
+                    return True
+        except Exception as e:
+            logger.warning(f"Could not restore WhatsApp session from Supabase: {e}")
+        return False
+
     def start(self):
         """Initialize and start the WhatsApp background worker."""
         if self.is_running:
@@ -156,8 +233,13 @@ class WhatsAppGateway:
         SESSION_DIR.mkdir(parents=True, exist_ok=True)
         db_path = str(SESSION_PATH)
 
+        # Restore session from Supabase if missing or empty on this container
+        if not SESSION_PATH.exists() or SESSION_PATH.stat().st_size == 0:
+            self.restore_session_from_supabase()
+
         logger.info(f"Initializing WhatsApp Multi-Device Client with session at {db_path}...")
         self.status = "connecting"
+        self._stop_requested = False
         self._broadcast("whatsapp_status", self.get_status())
 
         try:
@@ -197,11 +279,15 @@ class WhatsAppGateway:
                     pass
 
             self._broadcast("whatsapp_status", self.get_status())
+            # Backup session to Supabase in a background thread so it survives container restarts
+            threading.Thread(target=self.backup_session_to_supabase, daemon=True).start()
 
         # 3. Pairing Status Event
         @self.client.event(PairStatusEv)
         def on_pair_status(client_inst, event: PairStatusEv):
             logger.info(f"WhatsApp Pair Status: {event}")
+            if "success" in str(event).lower():
+                threading.Thread(target=self.backup_session_to_supabase, daemon=True).start()
 
         # 4. Inbound Message Event
         @self.client.event(MessageEv)
@@ -306,19 +392,40 @@ class WhatsAppGateway:
             except Exception as err:
                 logger.error(f"Error handling incoming WhatsApp message: {err}")
 
-        # Start worker thread
+        # Start worker thread with auto-reconnect resilience loop
         def _runner():
             logger.info("WhatsApp background network thread started.")
-            try:
-                self.client.connect()
-            except Exception as e:
-                logger.error(f"WhatsApp client run loop stopped: {e}")
-            finally:
+            consecutive_failures = 0
+            while not self._stop_requested:
+                try:
+                    logger.info("Connecting WhatsApp client to WhatsApp network...")
+                    self.client.connect()
+                except Exception as e:
+                    logger.error(f"WhatsApp client run loop stopped: {e}")
+
+                if self._stop_requested:
+                    break
+
+                consecutive_failures += 1
+                delay = min(60, 5 * (2 ** min(consecutive_failures - 1, 4)))
+                logger.info(
+                    f"WhatsApp disconnected. Auto-reconnecting in {delay}s (attempt {consecutive_failures})..."
+                )
                 with self._lock:
-                    self.is_running = False
-                    if self.status != "connected":
-                        self.status = "disconnected"
+                    if not self._stop_requested:
+                        self.status = "connecting"
                 self._broadcast("whatsapp_status", self.get_status())
+
+                for _ in range(int(delay * 2)):
+                    if self._stop_requested:
+                        break
+                    time.sleep(0.5)
+
+            with self._lock:
+                self.is_running = False
+                if self.status != "connected":
+                    self.status = "disconnected"
+            self._broadcast("whatsapp_status", self.get_status())
 
         self.is_running = True
         self._thread = threading.Thread(target=_runner, name="WhatsAppRunner", daemon=True)
@@ -538,6 +645,7 @@ class WhatsAppGateway:
 
     def disconnect(self):
         """Disconnect or logout current session."""
+        self._stop_requested = True
         if self.client:
             try:
                 self.client.disconnect()
@@ -550,11 +658,18 @@ class WhatsAppGateway:
             self.linked_phone = None
             self.linked_name = None
         self._broadcast("whatsapp_status", self.get_status())
+        # Also clean up Supabase session so logged-out session doesn't resurrect
+        try:
+            from memory.supabase_memory import delete_memory_supabase
+            delete_memory_supabase(category="system_session", key_name="whatsapp_session")
+        except Exception:
+            pass
         return {"success": True, "status": "disconnected"}
 
     def restart(self):
         """Cleanly restart WhatsApp client and generate a fresh QR code."""
         logger.info("Restarting WhatsApp Multi-Device Gateway...")
+        self._stop_requested = True
         if self.client:
             try:
                 self.client.disconnect()
@@ -565,6 +680,7 @@ class WhatsAppGateway:
             self.is_running = False
             self.status = "connecting"
             self.qr_data_url = None
+            self._stop_requested = False
         self.start()
 
     def request_phone_pairing_code(self, phone: str) -> Dict[str, Any]:

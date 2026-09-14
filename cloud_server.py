@@ -189,8 +189,33 @@ class CloudPhoneHub:
         self.phone_info: Dict[str, Any] = {}
         self.active_calls: Dict[str, Dict[str, Any]] = {}
         self.pairing_offers: Dict[str, Dict[str, Any]] = {}
-        self.device_secret: str = secrets.token_hex(24)
+        self.device_secret: str = self._load_or_create_device_secret()
         self.device_id: str = "android_companion_primary"
+
+    def _load_or_create_device_secret(self) -> str:
+        secret_file = BASE_DIR / "config" / "phone_device_secret.txt"
+        if secret_file.exists():
+            try:
+                sec = secret_file.read_text(encoding="utf-8").strip()
+                if sec:
+                    return sec
+            except Exception:
+                pass
+        if env_secret := os.environ.get("BRAHMA_PHONE_SECRET"):
+            sec = env_secret.strip()
+            try:
+                secret_file.parent.mkdir(parents=True, exist_ok=True)
+                secret_file.write_text(sec, encoding="utf-8")
+            except Exception:
+                pass
+            return sec
+        new_sec = secrets.token_hex(24)
+        try:
+            secret_file.parent.mkdir(parents=True, exist_ok=True)
+            secret_file.write_text(new_sec, encoding="utf-8")
+        except Exception:
+            pass
+        return new_sec
 
     @property
     def is_connected(self) -> bool:

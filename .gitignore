@@ -24,6 +24,7 @@ config/whatsapp_config.json
 config/workspace_store.sqlite3*
 config/smart_home.*
 config/whatsapp_session.*
+config/phone_device_secret.txt
 config/ppt_template_cache/
 scratch/
 desktop/
