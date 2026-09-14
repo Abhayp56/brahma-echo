@@ -216,7 +216,8 @@ class CloudBrain:
             "The system will automatically forward the execution to their connected laptop.\n"
             "TOOL USAGE RULES:\n"
             "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
-            "'terminal_agent' for command line/PowerShell, 'browser_control' or 'web_search' for web browsing.\n"
+            "'terminal_agent' for command line/PowerShell. Use 'web_search' for searching the web, looking up facts, prices, news, or comparisons (runs instantly in the background on the cloud server). "
+            "Use 'browser_control' ONLY when the user explicitly asks you to automate or open a browser on their laptop.\n"
             "- CRITICAL: You have NO internal timers and CANNOT wait or remember to call the user on your own. "
             "Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM', 'Remind me after 10 mins'), "
             "you MUST execute the tool 'schedule_reminder_call'. Do NOT just reply saying you will call them without executing the tool!\n"
@@ -571,6 +572,38 @@ class CloudBrain:
             from cloud.todoist_service import execute_todoist_tool
             res = await execute_todoist_tool(args.get("action", "list_tasks"), args)
             return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        # 1.10 Native Server-Side Web Search with Multi-Provider Fallback (GcrawlAI -> serpstack -> Zenserp -> DDG -> Gemini)
+        if name == "web_search":
+            query = (args.get("query") or "").strip()
+            mode = (args.get("mode") or "search").lower().strip()
+            items = args.get("items") or []
+            aspect = (args.get("aspect") or "general").strip()
+
+            from cloud.search_service import get_search_engine
+            engine = get_search_engine()
+
+            self.log(f"🔎 Server-side web search: query='{query}' mode='{mode}' items={items}")
+            search_res = await asyncio.to_thread(
+                engine.execute,
+                query=query,
+                mode=mode,
+                items=items,
+                aspect=aspect
+            )
+            provider_used = search_res.get("provider", "Unknown")
+            formatted_text = search_res.get("formatted_text", "")
+            self.log(f"✅ Web search completed via {provider_used}")
+
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={
+                    "result": formatted_text,
+                    "provider": provider_used,
+                    "query": query,
+                },
+            )
 
         # 2. Desktop actions delegated to connected laptop worker
         if not self.dispatcher:
