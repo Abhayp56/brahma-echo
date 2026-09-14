@@ -229,6 +229,14 @@ class WhatsAppGateway:
                 )
                 push_name = getattr(info, "Pushname", "") or sender_phone or "Friend"
 
+                # Auto-learn contact alias from WhatsApp Pushname
+                if sender_phone and push_name and push_name not in ("Friend", sender_phone):
+                    try:
+                        from cloud.contacts_manager import get_contacts_manager
+                        get_contacts_manager().auto_learn_whatsapp_chat(sender_phone, push_name)
+                    except Exception as ex:
+                        logger.debug(f"Could not auto-learn contact alias: {ex}")
+
                 # Detect if this message came from a WhatsApp group
                 chat_server = getattr(chat_jid, "Server", "") if chat_jid else ""
                 sender_server = getattr(sender_jid, "Server", "") if sender_jid else ""

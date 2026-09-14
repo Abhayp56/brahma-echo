@@ -643,6 +643,70 @@ async def disconnect_whatsapp():
 
 
 # =========================================================================
+# Multi-Alias Contacts & Address Book REST Endpoints
+# =========================================================================
+
+@app.get("/api/contacts")
+async def get_all_contacts():
+    """Returns all saved contacts with their aliases, phone numbers, and WhatsApp names."""
+    from cloud.contacts_manager import get_contacts_manager
+    contacts = get_contacts_manager().get_all()
+    return {"status": "success", "count": len(contacts), "contacts": contacts}
+
+
+@app.post("/api/contacts")
+async def save_or_update_contact(data: Dict[str, Any]):
+    """Saves or updates a contact with phone, name, whatsapp_name, and aliases."""
+    phone = data.get("phone", "").strip()
+    name = data.get("name", "").strip()
+    whatsapp_name = data.get("whatsapp_name", "").strip()
+    aliases = data.get("aliases") or []
+    notes = data.get("notes", "").strip()
+
+    if not phone or (not name and not whatsapp_name and not aliases):
+        raise HTTPException(status_code=400, detail="Missing phone or contact name.")
+
+    from cloud.contacts_manager import get_contacts_manager
+    prof = get_contacts_manager().save_contact(
+        phone=phone,
+        name=name,
+        whatsapp_name=whatsapp_name,
+        aliases=aliases,
+        notes=notes,
+        source="api_rest"
+    )
+    return {"status": "success", "contact": prof.to_dict()}
+
+
+@app.post("/api/contacts/alias")
+async def add_contact_alias_endpoint(data: Dict[str, Any]):
+    """Adds a nickname/alias to an existing contact."""
+    target = data.get("contact", "").strip()
+    alias = data.get("alias", "").strip()
+    if not target or not alias:
+        raise HTTPException(status_code=400, detail="Missing 'contact' or 'alias' field.")
+
+    from cloud.contacts_manager import get_contacts_manager
+    prof = get_contacts_manager().add_alias(target, alias)
+    if not prof:
+        raise HTTPException(status_code=404, detail=f"Contact '{target}' not found.")
+    return {"status": "success", "contact": prof.to_dict()}
+
+
+@app.post("/api/contacts/import-vcf")
+async def import_vcf_contacts(request: Request):
+    """Bulk import phone contacts from uploaded or raw .vcf vCard text."""
+    body = await request.body()
+    vcf_text = body.decode("utf-8", errors="ignore")
+    if not vcf_text or "BEGIN:VCARD" not in vcf_text.upper():
+        raise HTTPException(status_code=400, detail="Invalid or empty vCard (.vcf) payload.")
+
+    from cloud.contacts_manager import get_contacts_manager
+    count = get_contacts_manager().import_vcf_content(vcf_text)
+    return {"status": "success", "imported_count": count}
+
+
+# =========================================================================
 # Server-Side Live Utility Tool REST Endpoints (Open-Meteo, Nominatim, etc.)
 # =========================================================================
 

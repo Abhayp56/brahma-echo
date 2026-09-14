@@ -39,30 +39,41 @@ def _get_api_key() -> str:
 
 def clean_phone_number(raw: str) -> str:
     """Clean phone number string to pure digits without plus, spaces, or dashes."""
-    digits = re.sub(r"[^\d]", "", str(raw or ""))
-    # If starting with 0 and 11 digits (e.g. UK/Europe standard), format can be cleaned if country known
-    return digits
+    from cloud.contacts_manager import clean_phone_number as cm_clean
+    return cm_clean(raw)
 
 
 def resolve_phone_number(recipient: str) -> Optional[str]:
     """
     Resolve contact identifier to pure digits.
-    Supports direct phone numbers (e.g. '+91 98765 43210' or '9876543210')
-    or contact names stored in memory ('Rahul', 'Mom', 'Boss').
+    Supports:
+    1. Direct phone numbers (e.g. '+91 98765 43210' or '9876543210')
+    2. Phonebook names ('Rahul')
+    3. WhatsApp chat / push names ('Broski')
+    4. Custom spoken aliases/nicknames ('Dad', 'Bhai')
     """
     if not recipient:
         return None
 
+    # First attempt resolution via the multi-alias ContactsManager
+    try:
+        from cloud.contacts_manager import get_contacts_manager
+        cm = get_contacts_manager()
+        prof = cm.resolve(recipient)
+        if prof and prof.phone:
+            logger.info(f"Resolved recipient '{recipient}' -> {prof.primary_name} ({prof.phone})")
+            return prof.phone
+    except Exception as ex:
+        logger.warning(f"Error resolving via ContactsManager: {ex}")
+
+    # Fallback to direct digits check
     clean = clean_phone_number(recipient)
-    # If 7 or more digits and comprises most of the string, treat as direct phone number
-    if len(clean) >= 7 and (len(clean) / max(len(recipient.strip()), 1)) > 0.6:
+    if len(clean) >= 10 and (len(clean) / max(len(recipient.strip()), 1)) > 0.6:
         return clean
 
-    # Otherwise, search permanent memory
+    # Legacy memory fallback
     name_clean = recipient.strip().lower()
     mem = load_memory()
-
-    # Search 'contacts' category
     contacts = mem.get("contacts", {})
     if name_clean in contacts:
         val = contacts[name_clean]
@@ -71,7 +82,6 @@ def resolve_phone_number(recipient: str) -> Optional[str]:
         if c:
             return c
 
-    # Search 'relationships' category
     rel = mem.get("relationships", {})
     if name_clean in rel:
         val = rel[name_clean]
@@ -80,32 +90,27 @@ def resolve_phone_number(recipient: str) -> Optional[str]:
         if c:
             return c
 
-    # Fuzzy match keys in contacts
-    for k, v in {**contacts, **rel}.items():
-        if name_clean in k.lower() or k.lower() in name_clean:
-            val_str = v.get("value", "") if isinstance(v, dict) else str(v)
-            c = clean_phone_number(val_str)
-            if c:
-                return c
-
     return None
 
 
-def save_contact_number(name: str, phone: str):
-    """Save contact name and phone number to permanent memory."""
-    clean_name = name.strip().lower()
-    clean_num = clean_phone_number(phone)
-    if clean_name and clean_num:
-        update_memory({
-            "relationships": {
-                clean_name: {
-                    "value": clean_num,
-                    "display_name": name.strip(),
-                    "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            }
-        })
-        logger.info(f"Saved contact to memory: {name.strip()} -> {clean_num}")
+def save_contact_number(name: str, phone: str, whatsapp_name: str = "", aliases: Optional[List[str]] = None):
+    """Save contact name, WhatsApp name, and aliases to multi-alias ContactsManager and memory."""
+    from cloud.contacts_manager import get_contacts_manager
+    cm = get_contacts_manager()
+    return cm.save_contact(
+        phone=phone,
+        name=name,
+        whatsapp_name=whatsapp_name,
+        aliases=aliases or [name.lower()] if name else [],
+        source="whatsapp_conversations"
+    )
+
+
+def add_contact_alias(contact_identifier: str, alias: str):
+    """Add a nickname/alias to an existing contact (e.g. 'Broski' to 'Rahul')."""
+    from cloud.contacts_manager import get_contacts_manager
+    cm = get_contacts_manager()
+    return cm.add_alias(contact_identifier, alias)
 
 
 # In-memory rolling conversation thread history per contact/phone

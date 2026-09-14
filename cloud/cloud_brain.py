@@ -512,12 +512,43 @@ class CloudBrain:
 
             elif action == "save_contact":
                 from cloud.whatsapp_conversations import save_contact_number
-                save_contact_number(recipient, phone or message)
+                prof = save_contact_number(recipient, phone or message)
+                phone_display = getattr(prof, "phone", phone or message)
                 return types.FunctionResponse(
                     id=call_id,
                     name=name,
-                    response={"result": f"Saved WhatsApp contact '{recipient}' ({phone or message})."}
+                    response={"result": f"Saved contact '{recipient}' with phone {phone_display}."}
                 )
+
+            elif action == "add_alias":
+                alias = message or phone or ""
+                from cloud.whatsapp_conversations import add_contact_alias
+                prof = add_contact_alias(recipient, alias)
+                if prof:
+                    return types.FunctionResponse(
+                        id=call_id,
+                        name=name,
+                        response={"result": f"Linked nickname '{alias}' to {prof.primary_name} ({prof.phone}). You can now message them as '{alias}', boss."}
+                    )
+                else:
+                    return types.FunctionResponse(
+                        id=call_id,
+                        name=name,
+                        response={"error": f"Could not find contact '{recipient}' to link alias '{alias}'."}
+                    )
+
+            elif action == "list_contacts":
+                from cloud.contacts_manager import get_contacts_manager
+                contacts = get_contacts_manager().get_all()
+                if not contacts:
+                    summary = "You have no saved contacts yet, boss."
+                else:
+                    formatted = [
+                        f"• {c['primary_name']} ({c['phone']}) - Aliases: {', '.join(c['aliases']) if c['aliases'] else 'None'}"
+                        for c in contacts
+                    ]
+                    summary = f"You have {len(contacts)} contacts saved:\n" + "\n".join(formatted)
+                return types.FunctionResponse(id=call_id, name=name, response={"result": summary, "contacts": contacts})
 
             elif action in {"send_image", "send_document"}:
                 res = gateway.send_media(

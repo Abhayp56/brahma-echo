@@ -31,6 +31,7 @@ config/.bootstrap_done
 config/.desktop_shortcut_created
 config/certs/
 memory/long_term.json
+memory/contacts.json
 
 # Local test/debug artifacts
 _run.out.txt
