@@ -218,6 +218,7 @@ class CloudBrain:
             "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
             "'terminal_agent' for command line/PowerShell. Use 'web_search' for searching the web, looking up facts, prices, news, or comparisons (runs instantly in the background on the cloud server). "
             "Use 'browser_control' ONLY when the user explicitly asks you to automate or open a browser on their laptop.\n"
+            "- For WhatsApp messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone and merged with WhatsApp chat names. You can address contacts by their phonebook name (e.g. 'Rahul'), WhatsApp nickname (e.g. 'Broski'), or relationship ('Mom', 'Dad').\n"
             "- CRITICAL: You have NO internal timers and CANNOT wait or remember to call the user on your own. "
             "Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM', 'Remind me after 10 mins'), "
             "you MUST execute the tool 'schedule_reminder_call'. Do NOT just reply saying you will call them without executing the tool!\n"
@@ -510,45 +511,27 @@ class CloudBrain:
                 res = gateway.set_mode(new_mode)
                 return types.FunctionResponse(id=call_id, name=name, response=res)
 
-            elif action == "save_contact":
+            elif action in {"save_contact", "add_alias"}:
+                alias_to_add = args.get("alias") or message or ""
+                target_name = recipient or phone or ""
+                from cloud.contacts_manager import get_contacts_manager
+                mgr = get_contacts_manager()
+
+                if action == "add_alias" or ("is" in alias_to_add.lower() or "alias" in str(args).lower()):
+                    if mgr.add_alias(target_name, alias_to_add):
+                        return types.FunctionResponse(
+                            id=call_id,
+                            name=name,
+                            response={"result": f"Linked nickname '{alias_to_add}' to '{target_name}', boss. You can now refer to them as '{alias_to_add}' anytime!"}
+                        )
+
                 from cloud.whatsapp_conversations import save_contact_number
-                prof = save_contact_number(recipient, phone or message)
-                phone_display = getattr(prof, "phone", phone or message)
+                save_contact_number(recipient, phone or message)
                 return types.FunctionResponse(
                     id=call_id,
                     name=name,
-                    response={"result": f"Saved contact '{recipient}' with phone {phone_display}."}
+                    response={"result": f"Saved WhatsApp contact '{recipient}' ({phone or message})."}
                 )
-
-            elif action == "add_alias":
-                alias = message or phone or ""
-                from cloud.whatsapp_conversations import add_contact_alias
-                prof = add_contact_alias(recipient, alias)
-                if prof:
-                    return types.FunctionResponse(
-                        id=call_id,
-                        name=name,
-                        response={"result": f"Linked nickname '{alias}' to {prof.primary_name} ({prof.phone}). You can now message them as '{alias}', boss."}
-                    )
-                else:
-                    return types.FunctionResponse(
-                        id=call_id,
-                        name=name,
-                        response={"error": f"Could not find contact '{recipient}' to link alias '{alias}'."}
-                    )
-
-            elif action == "list_contacts":
-                from cloud.contacts_manager import get_contacts_manager
-                contacts = get_contacts_manager().get_all()
-                if not contacts:
-                    summary = "You have no saved contacts yet, boss."
-                else:
-                    formatted = [
-                        f"• {c['primary_name']} ({c['phone']}) - Aliases: {', '.join(c['aliases']) if c['aliases'] else 'None'}"
-                        for c in contacts
-                    ]
-                    summary = f"You have {len(contacts)} contacts saved:\n" + "\n".join(formatted)
-                return types.FunctionResponse(id=call_id, name=name, response={"result": summary, "contacts": contacts})
 
             elif action in {"send_image", "send_document"}:
                 res = gateway.send_media(

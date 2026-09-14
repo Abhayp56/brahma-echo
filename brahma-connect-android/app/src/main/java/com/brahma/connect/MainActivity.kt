@@ -28,6 +28,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val contactsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            AgentStateStore.addLog("Contacts permission granted")
+        }
+    }
+
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             if (pendingServiceStart) {
@@ -75,6 +81,7 @@ class MainActivity : ComponentActivity() {
         maybeStartService()
         ensureCameraPermission()
         ensureAudioPermission()
+        ensureContactsPermission()
         setContent {
             BrahmaConnectTheme {
                 BrahmaConnectApp(
@@ -113,6 +120,12 @@ class MainActivity : ComponentActivity() {
     private fun ensureAudioPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun ensureContactsPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            contactsPermission.launch(Manifest.permission.READ_CONTACTS)
         }
     }
 

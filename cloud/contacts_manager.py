@@ -1,24 +1,20 @@
 """
-cloud/contacts_manager.py — Multi-Alias Contact Resolution Engine for ARYA & WhatsApp
+cloud/contacts_manager.py — Multi-Alias Contact Engine & Address Book Manager
 
-Solves the real-world contact naming dilemma:
-- A person may be saved as "Rahul" in your phonebook.
-- But on WhatsApp, their chat/push name is "Broski".
-- You might speak "Send message to Broski" or "Send message to Rahul".
-- Phone number is the immutable anchor; multiple aliases map to the same contact.
+Merges phone address book contacts (from Android auto-sync) with WhatsApp chat/profile names.
+Enables cross-name resolution so users can refer to contacts by their phonebook name (e.g. 'Rahul'),
+their WhatsApp chat name (e.g. 'Broski'), or custom voice-taught nicknames (e.g. 'Bhai').
 """
 
 from __future__ import annotations
 
-import difflib
 import json
 import logging
-import os
 import re
 import sys
 import threading
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -30,418 +26,321 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 BASE_DIR = _get_base_dir()
-CONTACTS_FILE = BASE_DIR / "memory" / "contacts.json"
-LONG_TERM_MEMORY_FILE = BASE_DIR / "memory" / "long_term.json"
+CONTACTS_PATH = BASE_DIR / "memory" / "contacts_book.json"
+LONG_TERM_MEMORY_PATH = BASE_DIR / "memory" / "long_term.json"
 
 
-def clean_phone_number(raw: str, default_country_code: str = "91") -> str:
-    """
-    Normalizes phone numbers to standard pure digit format.
-    Handles +91, spaces, dashes, leading zeros, and 10-digit Indian numbers.
-    """
-    digits = re.sub(r"[^\d]", "", str(raw or "").strip())
-    if not digits:
+def clean_phone_number(raw: str) -> str:
+    """Extract pure digits from phone string, stripping formatting characters."""
+    if not raw:
         return ""
-
-    # Remove leading trunk zero (e.g. 09876543210 -> 9876543210)
-    if digits.startswith("0") and len(digits) == 11:
-        digits = digits[1:]
-
-    # If 10 digits and default country is India, prepend 91 for international WhatsApp format
-    if len(digits) == 10 and default_country_code:
-        digits = f"{default_country_code}{digits}"
-
+    digits = re.sub(r"[^\d]", "", str(raw).strip())
+    # If 10 digits starting with 6,7,8,9, default to India +91 prefix if no country code provided
+    if len(digits) == 10 and digits[0] in "6789":
+        digits = "91" + digits
     return digits
 
 
 @dataclass
 class ContactProfile:
+    """A unified contact profile linking a phone number to multiple names and aliases."""
     phone: str
-    primary_name: str
     phone_name: str = ""
     whatsapp_name: str = ""
-    aliases: List[str] = field(default_factory=list)
-    notes: str = ""
-    updated_at: str = ""
-    interaction_count: int = 0
+    aliases: Set[str] = field(default_factory=set)
+    updated_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "phone": self.phone,
-            "primary_name": self.primary_name,
             "phone_name": self.phone_name,
             "whatsapp_name": self.whatsapp_name,
-            "aliases": sorted(list(set(self.aliases))),
-            "notes": self.notes,
+            "aliases": sorted(list(self.aliases)),
             "updated_at": self.updated_at,
-            "interaction_count": self.interaction_count,
         }
 
-    def all_names(self) -> Set[str]:
-        """Returns all lowercase normalized names and aliases for this contact."""
-        names: Set[str] = set()
-        if self.primary_name:
-            names.add(self.primary_name.strip().lower())
-        if self.phone_name:
-            names.add(self.phone_name.strip().lower())
-        if self.whatsapp_name:
-            names.add(self.whatsapp_name.strip().lower())
-        for a in self.aliases:
-            if a:
-                names.add(a.strip().lower())
-        return names
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ContactProfile:
+        aliases = set(str(a).strip().lower() for a in data.get("aliases", []) if a)
+        return cls(
+            phone=clean_phone_number(data.get("phone", "")),
+            phone_name=str(data.get("phone_name", "")).strip(),
+            whatsapp_name=str(data.get("whatsapp_name", "")).strip(),
+            aliases=aliases,
+            updated_at=str(data.get("updated_at", "")),
+        )
+
+    def add_alias(self, alias: str):
+        c = alias.strip().lower()
+        if c:
+            self.aliases.add(c)
 
 
 class ContactsManager:
     """
-    Manages persistent contacts with multi-alias resolution.
-    Thread-safe and synchronized across Cloud Brain, WhatsApp Gateway, and Android Client.
+    Central repository for contacts, supporting phonebook auto-sync,
+    WhatsApp chat name learning, and multi-alias resolution.
     """
 
-    def __init__(self, storage_path: Optional[Path] = None):
-        self.storage_path = storage_path or CONTACTS_FILE
-        self._lock = threading.RLock()
-        self.contacts: Dict[str, ContactProfile] = {}  # Key: canonical phone number
-        self._alias_index: Dict[str, str] = {}         # Key: lowercase alias -> phone number
+    _instance: Optional[ContactsManager] = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> ContactsManager:
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls()
+            return cls._instance
+
+    def __init__(self):
+        self._profiles: Dict[str, ContactProfile] = {}  # phone -> ContactProfile
         self._load()
 
     def _load(self):
-        """Load contacts from disk, migrating legacy memory if necessary."""
-        with self._lock:
-            self.contacts.clear()
-            self._alias_index.clear()
-
-            if self.storage_path.exists():
-                try:
-                    with open(self.storage_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    if isinstance(data, dict):
-                        for phone, item in data.items():
-                            clean_p = clean_phone_number(phone)
-                            if not clean_p:
-                                continue
-                            aliases = [str(a).strip().lower() for a in item.get("aliases", []) if str(a).strip()]
-                            prof = ContactProfile(
-                                phone=clean_p,
-                                primary_name=item.get("primary_name") or item.get("name") or clean_p,
-                                phone_name=item.get("phone_name", ""),
-                                whatsapp_name=item.get("whatsapp_name", ""),
-                                aliases=aliases,
-                                notes=item.get("notes", ""),
-                                updated_at=item.get("updated_at", ""),
-                                interaction_count=item.get("interaction_count", 0),
-                            )
-                            self.contacts[clean_p] = prof
-                except Exception as ex:
-                    logger.error(f"Error loading contacts from {self.storage_path}: {ex}")
-
-            # Bootstrap from long_term.json (legacy contacts & relationships) if empty
-            if not self.contacts and LONG_TERM_MEMORY_FILE.exists():
-                self._import_from_long_term_memory()
-
-            self._rebuild_alias_index()
-
-    def _import_from_long_term_memory(self):
-        """One-time migration of contacts from long_term.json into contacts.json."""
-        try:
-            with open(LONG_TERM_MEMORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, dict):
-                return
-
-            contacts_cat = data.get("contacts", {})
-            rel_cat = data.get("relationships", {})
-
-            for name, val in {**contacts_cat, **rel_cat}.items():
-                val_str = val.get("value", "") if isinstance(val, dict) else str(val)
-                phone = clean_phone_number(val_str)
-                if phone:
-                    clean_name = name.strip()
-                    self.save_contact(
-                        phone=phone,
-                        name=clean_name,
-                        aliases=[clean_name.lower()],
-                        source="legacy_memory_migration"
-                    )
-            logger.info(f"Imported {len(self.contacts)} contacts from long-term memory.")
-        except Exception as ex:
-            logger.warning(f"Could not import legacy contacts: {ex}")
-
-    def _rebuild_alias_index(self):
-        """Reconstructs the fast lookup index from all contacts."""
-        self._alias_index.clear()
-        for phone, prof in self.contacts.items():
-            # Add phone number itself
-            self._alias_index[phone] = phone
-            # Add all names & aliases
-            for name in prof.all_names():
-                if name:
-                    self._alias_index[name] = phone
-
-    def _save(self):
-        """Persist contacts to disk."""
-        with self._lock:
+        """Loads contacts from contacts_book.json and seeds from long_term.json if available."""
+        if CONTACTS_PATH.exists():
             try:
-                self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-                data = {phone: prof.to_dict() for phone, prof in self.contacts.items()}
-                with open(self.storage_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-            except Exception as ex:
-                logger.error(f"Failed to save contacts to {self.storage_path}: {ex}")
+                with open(CONTACTS_PATH, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                    for item in raw.get("contacts", []):
+                        prof = ContactProfile.from_dict(item)
+                        if prof.phone:
+                            self._profiles[prof.phone] = prof
+                logger.info(f"Loaded {len(self._profiles)} unified contact profiles from {CONTACTS_PATH.name}")
+            except Exception as e:
+                logger.warning(f"Failed to read {CONTACTS_PATH}: {e}")
 
-    def save_contact(
+        # Also import any contacts/relationships present in long_term.json
+        if LONG_TERM_MEMORY_PATH.exists():
+            try:
+                with open(LONG_TERM_MEMORY_PATH, "r", encoding="utf-8") as f:
+                    lt = json.load(f)
+                    for cat in ("contacts", "relationships"):
+                        cat_data = lt.get(cat, {})
+                        if isinstance(cat_data, dict):
+                            for name, val in cat_data.items():
+                                val_str = val.get("value", "") if isinstance(val, dict) else str(val)
+                                phone = clean_phone_number(val_str)
+                                if phone:
+                                    self._upsert_contact(phone=phone, phone_name=name, aliases=[name])
+            except Exception as e:
+                logger.debug(f"Could not seed from long_term.json: {e}")
+
+    def save(self):
+        """Persists contacts to memory/contacts_book.json and long_term.json."""
+        try:
+            CONTACTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(CONTACTS_PATH, "w", encoding="utf-8") as f:
+                json.dump({
+                    "version": "1.0",
+                    "total": len(self._profiles),
+                    "contacts": [p.to_dict() for p in self._profiles.values()]
+                }, f, indent=2, ensure_ascii=False)
+
+            # Sync back into long_term.json under 'contacts'
+            if LONG_TERM_MEMORY_PATH.exists():
+                try:
+                    with open(LONG_TERM_MEMORY_PATH, "r", encoding="utf-8") as f:
+                        lt = json.load(f)
+                    if "contacts" not in lt or not isinstance(lt["contacts"], dict):
+                        lt["contacts"] = {}
+                    for p in self._profiles.values():
+                        primary_name = (p.phone_name or p.whatsapp_name or p.phone).lower()
+                        lt["contacts"][primary_name] = {
+                            "value": p.phone,
+                            "display_name": p.phone_name or p.whatsapp_name,
+                            "updated": p.updated_at,
+                        }
+                    with open(LONG_TERM_MEMORY_PATH, "w", encoding="utf-8") as f:
+                        json.dump(lt, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    logger.debug(f"Failed to sync to long_term.json: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed saving contacts to {CONTACTS_PATH}: {e}")
+
+    def _upsert_contact(
         self,
         phone: str,
-        name: str = "",
         phone_name: str = "",
         whatsapp_name: str = "",
         aliases: Optional[List[str]] = None,
-        notes: str = "",
-        source: str = "manual",
     ) -> ContactProfile:
-        """
-        Saves or merges a contact.
-        If a contact with the same phone exists, automatically merges names and aliases!
-        """
-        clean_p = clean_phone_number(phone)
-        if not clean_p:
-            raise ValueError(f"Invalid phone number: {phone}")
+        clean_num = clean_phone_number(phone)
+        if not clean_num:
+            raise ValueError("Phone number must contain digits.")
 
-        with self._lock:
-            now_str = time.strftime("%Y-%m-%d %H:%M:%S")
-            existing = self.contacts.get(clean_p)
-
-            new_aliases: Set[str] = set()
-            if aliases:
-                for a in aliases:
-                    if a and str(a).strip():
-                        new_aliases.add(str(a).strip().lower())
-
-            if name:
-                new_aliases.add(name.strip().lower())
+        if clean_num in self._profiles:
+            prof = self._profiles[clean_num]
             if phone_name:
-                new_aliases.add(phone_name.strip().lower())
+                prof.phone_name = phone_name.strip()
+                prof.add_alias(phone_name)
             if whatsapp_name:
-                new_aliases.add(whatsapp_name.strip().lower())
+                prof.whatsapp_name = whatsapp_name.strip()
+                prof.add_alias(whatsapp_name)
+        else:
+            prof = ContactProfile(
+                phone=clean_num,
+                phone_name=phone_name.strip(),
+                whatsapp_name=whatsapp_name.strip(),
+            )
+            if phone_name:
+                prof.add_alias(phone_name)
+            if whatsapp_name:
+                prof.add_alias(whatsapp_name)
+            self._profiles[clean_num] = prof
 
-            if existing:
-                # Merge into existing profile
-                if name and not existing.primary_name:
-                    existing.primary_name = name.strip()
-                if phone_name:
-                    existing.phone_name = phone_name.strip()
-                if whatsapp_name:
-                    existing.whatsapp_name = whatsapp_name.strip()
-                if notes:
-                    existing.notes = notes.strip()
+        if aliases:
+            for a in aliases:
+                prof.add_alias(a)
 
-                combined_aliases = set(existing.aliases) | new_aliases
-                existing.aliases = sorted(list(combined_aliases))
-                existing.updated_at = now_str
-                prof = existing
-                logger.info(f"Merged contact [{clean_p}]: {prof.primary_name} (aliases: {prof.aliases})")
-            else:
-                primary = name.strip() or phone_name.strip() or whatsapp_name.strip() or clean_p
-                prof = ContactProfile(
-                    phone=clean_p,
-                    primary_name=primary,
-                    phone_name=phone_name.strip(),
-                    whatsapp_name=whatsapp_name.strip(),
-                    aliases=sorted(list(new_aliases)),
-                    notes=notes.strip(),
-                    updated_at=now_str,
-                    interaction_count=0,
-                )
-                self.contacts[clean_p] = prof
-                logger.info(f"Created new contact [{clean_p}]: {prof.primary_name} (aliases: {prof.aliases})")
+        prof.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
+        return prof
 
-            self._rebuild_alias_index()
-            self._save()
-            return prof
-
-    def add_alias(self, contact_identifier: str, new_alias: str) -> Optional[ContactProfile]:
+    def sync_phone_contacts(self, contacts: List[Dict[str, Any]]) -> int:
         """
-        Adds a nickname/alias to an existing contact.
-        contact_identifier can be phone number, existing contact name, or existing alias.
+        Receives batch contacts from Android companion app auto-sync.
+        Each contact item has 'name' and 'phone'.
         """
-        clean_alias = new_alias.strip().lower()
+        added_or_updated = 0
+        with self._lock:
+            for item in contacts:
+                raw_name = str(item.get("name") or "").strip()
+                raw_phone = str(item.get("phone") or "").strip()
+                if not raw_phone:
+                    continue
+                clean_num = clean_phone_number(raw_phone)
+                if not clean_num or len(clean_num) < 7:
+                    continue
+
+                self._upsert_contact(phone=clean_num, phone_name=raw_name)
+                added_or_updated += 1
+
+            self.save()
+
+        logger.info(f"📱 Synced {added_or_updated} contacts from Android phone companion.")
+        return added_or_updated
+
+    def learn_whatsapp_contact(self, phone: str, push_name: str) -> Optional[ContactProfile]:
+        """
+        Automatically learns or enriches a contact with their WhatsApp display name (e.g. 'Broski').
+        Called whenever WhatsApp receives or sends a message.
+        """
+        clean_num = clean_phone_number(phone)
+        if not clean_num or not push_name:
+            return None
+
+        clean_push = push_name.strip()
+        # Ignore generic placeholder names
+        if clean_push.lower() in {"user", "friend", "someone", "unknown", clean_num}:
+            return None
+
+        with self._lock:
+            prof = self._upsert_contact(phone=clean_num, whatsapp_name=clean_push)
+            self.save()
+
+        logger.info(f"💬 Learned WhatsApp alias for {clean_num}: '{clean_push}'")
+        return prof
+
+    def add_alias(self, target: str, alias: str) -> bool:
+        """
+        Allows teaching ARYA an alias or nickname explicitly via voice:
+        e.g. 'Remember that Broski is Rahul' or 'Add alias Mom to 9876543210'.
+        """
+        clean_alias = alias.strip().lower()
         if not clean_alias:
-            return None
+            return False
 
         with self._lock:
-            prof = self.resolve(contact_identifier)
-            if not prof:
-                logger.warning(f"Cannot add alias '{new_alias}': contact '{contact_identifier}' not found.")
-                return None
+            # First check if target is a phone number
+            phone = clean_phone_number(target)
+            if phone and phone in self._profiles:
+                self._profiles[phone].add_alias(clean_alias)
+                self.save()
+                return True
 
-            if clean_alias not in prof.aliases:
-                prof.aliases.append(clean_alias)
-                prof.aliases = sorted(list(set(prof.aliases)))
-                prof.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
-                self._rebuild_alias_index()
-                self._save()
-                logger.info(f"Added alias '{clean_alias}' to contact '{prof.primary_name}' ({prof.phone}).")
-            return prof
+            # Check if target resolves to an existing contact
+            resolved = self._resolve_internal(target)
+            if resolved:
+                resolved.add_alias(clean_alias)
+                self.save()
+                return True
 
-    def auto_learn_whatsapp_chat(self, phone: str, push_name: str) -> Optional[ContactProfile]:
-        """
-        Automatically called when an incoming/outgoing WhatsApp message occurs.
-        Registers the sender's WhatsApp Pushname as an alias for their phone number.
-        """
-        clean_p = clean_phone_number(phone)
-        clean_name = push_name.strip() if push_name else ""
-        if not clean_p or not clean_name:
+        return False
+
+    def _resolve_internal(self, query: str) -> Optional[ContactProfile]:
+        """Internal helper for resolving a query without acquiring lock again."""
+        q = query.strip().lower()
+        if not q:
             return None
 
-        with self._lock:
-            existing = self.contacts.get(clean_p)
-            if existing:
-                existing.interaction_count += 1
-                if clean_name.lower() not in existing.all_names():
-                    existing.aliases.append(clean_name.lower())
-                    existing.aliases = sorted(list(set(existing.aliases)))
-                    if not existing.whatsapp_name:
-                        existing.whatsapp_name = clean_name
-                    existing.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
-                    self._rebuild_alias_index()
-                    self._save()
-                    logger.info(f"Auto-learned WhatsApp alias for {clean_p}: '{clean_name}'")
-                return existing
-            else:
-                # Create profile with WhatsApp name
-                return self.save_contact(
-                    phone=clean_p,
-                    whatsapp_name=clean_name,
-                    aliases=[clean_name.lower()],
-                    source="whatsapp_auto_learn"
-                )
+        # 1. Direct phone number check
+        clean_num = clean_phone_number(q)
+        if len(clean_num) >= 7 and clean_num in self._profiles:
+            return self._profiles[clean_num]
 
-    def resolve(self, query: str) -> Optional[ContactProfile]:
-        """
-        Multi-tier Contact Resolution:
-        1. Exact phone number match
-        2. Exact alias match (case-insensitive)
-        3. Exact name match (primary_name, phone_name, whatsapp_name)
-        4. Substring token match (e.g. 'Rahul' in 'Rahul Verma')
-        5. Fuzzy string similarity match (e.g. 'Brosky' -> 'Broski')
-        """
-        clean_q = str(query or "").strip()
-        if not clean_q:
-            return None
+        # 2. Exact match in aliases
+        for prof in self._profiles.values():
+            if q in prof.aliases:
+                return prof
 
-        with self._lock:
-            # 1. Direct phone number check
-            clean_digits = clean_phone_number(clean_q)
-            if clean_digits in self.contacts:
-                return self.contacts[clean_digits]
+        # 3. Exact match against phone_name or whatsapp_name
+        for prof in self._profiles.values():
+            if q == prof.phone_name.lower() or q == prof.whatsapp_name.lower():
+                return prof
 
-            # If 7+ digits provided, treat as direct phone number even if not in book
-            if len(clean_digits) >= 10 and (len(clean_digits) / max(len(clean_q), 1)) > 0.6:
-                if clean_digits in self.contacts:
-                    return self.contacts[clean_digits]
-
-            lower_q = clean_q.lower()
-
-            # 2. Exact alias index lookup
-            if lower_q in self._alias_index:
-                target_phone = self._alias_index[lower_q]
-                if target_phone in self.contacts:
-                    return self.contacts[target_phone]
-
-            # 3. Exact field match
-            for prof in self.contacts.values():
-                if lower_q in prof.all_names():
-                    return prof
-
-            # 4. Substring / Token boundary match (e.g. user says "Rahul", saved as "Rahul College")
-            candidates: List[ContactProfile] = []
-            for prof in self.contacts.values():
-                for name in prof.all_names():
-                    # Word boundary match: 'rahul' in ['rahul', 'college']
-                    tokens = re.split(r"[\s_\-]+", name)
-                    if lower_q in tokens or any(t.startswith(lower_q) for t in tokens):
-                        candidates.append(prof)
-                        break
-                    elif lower_q in name:
-                        candidates.append(prof)
-                        break
-
-            if len(candidates) == 1:
-                return candidates[0]
-            elif len(candidates) > 1:
-                # Sort by interaction count / recency
-                candidates.sort(key=lambda c: c.interaction_count, reverse=True)
-                return candidates[0]
-
-            # 5. Fuzzy string similarity matching (handles minor speech-to-text typos like 'Brosky' -> 'Broski')
-            best_match: Optional[ContactProfile] = None
-            best_score = 0.0
-
-            for prof in self.contacts.values():
-                for name in prof.all_names():
-                    ratio = difflib.SequenceMatcher(None, lower_q, name).ratio()
-                    if ratio > best_score:
-                        best_score = ratio
-                        best_match = prof
-
-            if best_score >= 0.80 and best_match:
-                logger.info(f"Fuzzy matched contact '{query}' -> '{best_match.primary_name}' (score: {best_score:.2f})")
-                return best_match
-
-            return None
-
-    def import_vcf_content(self, vcf_text: str) -> int:
-        """
-        Parses a standard vCard (.vcf) export file and imports all contacts.
-        Returns the number of imported/updated contacts.
-        """
-        imported = 0
-        vcard_blocks = re.findall(r"BEGIN:VCARD.*?END:VCARD", vcf_text, re.DOTALL | re.IGNORECASE)
-
-        for block in vcard_blocks:
-            fn_match = re.search(r"(?:^|\n)FN(?:;[^:]*)?:(.*)", block, re.IGNORECASE)
-            n_match = re.search(r"(?:^|\n)N(?:;[^:]*)?:(.*)", block, re.IGNORECASE)
-            tel_matches = re.findall(r"(?:^|\n)TEL(?:;[^:]*)?:(.*)", block, re.IGNORECASE)
-
-            full_name = ""
-            if fn_match:
-                full_name = fn_match.group(1).strip()
-            elif n_match:
-                parts = [p.strip() for p in n_match.group(1).split(";") if p.strip()]
-                full_name = " ".join(reversed(parts))
-
-            if not tel_matches:
-                continue
-
-            for raw_tel in tel_matches:
-                phone = clean_phone_number(raw_tel)
-                if phone and len(phone) >= 10:
-                    self.save_contact(
-                        phone=phone,
-                        name=full_name or phone,
-                        phone_name=full_name,
-                        aliases=[full_name.lower()] if full_name else [],
-                        source="vcf_import"
-                    )
-                    imported += 1
+        # 4. Prefix / Word boundary match (e.g. 'Rahul' matches 'Rahul Verma' or 'Rahul College')
+        candidates: List[ContactProfile] = []
+        for prof in self._profiles.values():
+            names_to_check = [prof.phone_name.lower(), prof.whatsapp_name.lower()] + list(prof.aliases)
+            for n in names_to_check:
+                if not n:
+                    continue
+                # If query is full word inside the contact name
+                pattern = r"\b" + re.escape(q) + r"\b"
+                if re.search(pattern, n):
+                    candidates.append(prof)
                     break
 
-        logger.info(f"Imported {imported} contacts from vCard file.")
-        return imported
+        if len(candidates) == 1:
+            return candidates[0]
+        elif len(candidates) > 1:
+            # Prefer contact with most recent update or closest length
+            candidates.sort(key=lambda p: abs(len(p.phone_name or p.whatsapp_name) - len(q)))
+            return candidates[0]
 
-    def get_all(self) -> List[Dict[str, Any]]:
-        """Returns all contacts sorted alphabetically by primary name."""
+        # 5. Substring match fallback (e.g. 'brosk' matches 'broski')
+        for prof in self._profiles.values():
+            if any(q in alias for alias in prof.aliases):
+                return prof
+
+        return None
+
+    def resolve(self, recipient: str) -> Optional[ContactProfile]:
+        """
+        Public resolver method: maps any recipient identifier (Rahul, Broski, Mom, 9876543210)
+        to a unified ContactProfile.
+        """
         with self._lock:
-            sorted_contacts = sorted(self.contacts.values(), key=lambda c: c.primary_name.lower())
-            return [c.to_dict() for c in sorted_contacts]
+            return self._resolve_internal(recipient)
+
+    def resolve_phone(self, recipient: str) -> Optional[str]:
+        """Convenience method returning pure phone digits for a recipient string."""
+        prof = self.resolve(recipient)
+        if prof:
+            return prof.phone
+        # Fallback to direct digits if string looks like phone number
+        clean = clean_phone_number(recipient)
+        if len(clean) >= 7:
+            return clean
+        return None
+
+    def list_contacts(self) -> List[Dict[str, Any]]:
+        """Returns all contacts formatted for debugging or Web UI."""
+        with self._lock:
+            return [p.to_dict() for p in self._profiles.values()]
 
 
-# Global singleton instance
-_contacts_manager_instance: Optional[ContactsManager] = None
-
+# Global singleton access
 def get_contacts_manager() -> ContactsManager:
-    """Returns the global singleton instance of ContactsManager."""
-    global _contacts_manager_instance
-    if _contacts_manager_instance is None:
-        _contacts_manager_instance = ContactsManager()
-    return _contacts_manager_instance
+    return ContactsManager.get_instance()

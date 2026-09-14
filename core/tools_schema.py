@@ -237,7 +237,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "send_text | send_image | send_document | check_status | save_contact | add_alias | list_contacts | read_messages | add_vip | remove_vip | list_vip | set_mode"
+                    "description": "send_text | send_image | send_document | check_status | save_contact | read_messages | add_vip | remove_vip | list_vip | set_mode"
                 },
                 "recipient": {
                     "type": "STRING",

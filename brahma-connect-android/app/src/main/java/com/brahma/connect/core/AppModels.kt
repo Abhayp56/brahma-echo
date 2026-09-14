@@ -178,12 +178,26 @@ object BrahmaProtocol {
     const val CALL_SPEECH_TEXT = "call_speech_text"
     const val CALL_TURN_COMPLETE = "call_turn_complete"
 
+    // Contacts Auto-Sync Protocol
+    const val CONTACTS_SYNC = "contacts_sync"
+
     fun envelope(type: String, payload: JSONObject = JSONObject(), requestId: String = UUID.randomUUID().toString().replace("-", "")): JSONObject {
         return JSONObject()
             .put("type", type)
             .put("request_id", requestId)
             .put("timestamp", Instant.now().toString())
             .put("payload", payload)
+    }
+
+    fun contactsSync(contacts: List<Map<String, String>>): JSONObject {
+        val arr = JSONArray()
+        contacts.forEach { c ->
+            arr.put(JSONObject().put("name", c["name"] ?: "").put("phone", c["phone"] ?: ""))
+        }
+        return envelope(
+            CONTACTS_SYNC,
+            JSONObject().put("contacts", arr)
+        )
     }
 
     fun hello(snapshot: DeviceSnapshot): JSONObject = envelope(

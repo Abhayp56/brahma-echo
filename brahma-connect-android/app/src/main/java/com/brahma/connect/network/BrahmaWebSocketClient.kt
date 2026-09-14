@@ -261,6 +261,7 @@ class BrahmaWebSocketClient(
                     BrahmaProtocol.DEVICE_ONLINE -> {
                         AgentStateStore.setConnectionState(ConnectionState.CONNECTED)
                         AgentStateStore.setStatus("Connected")
+                        syncContactsIfPermitted()
                     }
                     BrahmaProtocol.CAPABILITIES -> {
                         AgentStateStore.addLog("Capabilities synced")
@@ -349,5 +350,27 @@ class BrahmaWebSocketClient(
         send(payload)
         val sent = pending.copy(status = "Sent")
         AgentStateStore.addChatMessage(sent)
+    }
+
+    fun syncContactsIfPermitted() {
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_CONTACTS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            Thread {
+                try {
+                    val contacts = com.brahma.connect.contacts.ContactsHelper.fetchContacts(context)
+                    if (contacts.isNotEmpty()) {
+                        send(BrahmaProtocol.contactsSync(contacts))
+                        AgentStateStore.addLog("Synced ${contacts.size} phone contacts")
+                        android.util.Log.i("BrahmaWebSocketClient", "Synced ${contacts.size} contacts to ARYA")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("BrahmaWebSocketClient", "Error syncing contacts: ${e.message}", e)
+                }
+            }.start()
+        }
     }
 }
