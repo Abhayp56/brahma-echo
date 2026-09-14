@@ -499,7 +499,8 @@ class WhatsAppGateway:
                 jid = build_jid(phone, server="s.whatsapp.net")
 
             self.client.send_message(jid, message)
-            logger.info(f"✅ Sent WhatsApp message to {phone}: '{message[:40]}'")
+            logged_msg = message if len(message) <= 300 else (message[:300] + f"... [truncated total {len(message)} chars]")
+            logger.info(f"✅ Sent WhatsApp message to {phone} ({len(message)} chars): '{logged_msg}'")
 
             # Record outgoing message
             record = {

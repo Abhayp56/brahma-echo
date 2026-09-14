@@ -219,6 +219,8 @@ class CloudBrain:
             "'terminal_agent' for command line/PowerShell. Use 'web_search' for searching the web, looking up facts, prices, news, or comparisons (runs instantly in the background on the cloud server). "
             "Use 'browser_control' ONLY when the user explicitly asks you to automate or open a browser on their laptop.\n"
             "- For WhatsApp messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone and merged with WhatsApp chat names. You can address contacts by their phonebook name (e.g. 'Rahul'), WhatsApp nickname (e.g. 'Broski'), or relationship ('Mom', 'Dad').\n"
+            "- CRITICAL RULE FOR CHECKING CONTACTS: When the user asks if a contact exists (e.g. 'Is there a contact called X?', 'Do I have X in my contacts?'), or asks for someone's phone number, use 'search_contact'. NEVER call send_message or send_text to test if a contact exists!\n"
+            "- RECIPIENT ISOLATION: When the user says 'send me a message', 'text me', or 'send me...', 'me' refers to the user (Abhay). NEVER send a message to a person mentioned in a previous turn (like Sumit or Rahul) unless explicitly instructed in the current turn. If the user asks for news headlines or info, tell them directly or send to their own WhatsApp ('me').\n"
             "- CRITICAL: You have NO internal timers and CANNOT wait or remember to call the user on your own. "
             "Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM', 'Remind me after 10 mins'), "
             "you MUST execute the tool 'schedule_reminder_call'. Do NOT just reply saying you will call them without executing the tool!\n"
@@ -434,6 +436,51 @@ class CloudBrain:
             except Exception as call_err:
                 return types.FunctionResponse(id=call_id, name=name, response={"error": f"Failed to call phone: {call_err}"})
 
+        # 1.45 Contact search & verification (read-only, non-sending)
+        if name == "search_contact" or (name == "whatsapp_control" and str(args.get("action", "")).lower() in {"search_contact", "check_contact", "find_contact"}):
+            query = args.get("query") or args.get("recipient") or args.get("phone") or args.get("message") or ""
+            from cloud.contacts_manager import get_contacts_manager
+            mgr = get_contacts_manager()
+            matches = mgr.find_contacts(str(query), limit=5)
+            if not matches:
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={
+                        "exists": False,
+                        "query": str(query),
+                        "message": f"No contact named or matching '{query}' was found in the synced contacts or WhatsApp chats.",
+                        "action_to_take": f"Inform the boss: 'No boss, there is no contact named {query}. Would you like me to save their number?'"
+                    }
+                )
+
+            top = matches[0]
+            if top.get("score", 0) >= 0.80 or len(matches) == 1:
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={
+                        "exists": True,
+                        "contact_name": top.get("name"),
+                        "phone": top.get("phone"),
+                        "aliases": top.get("aliases", []),
+                        "message": f"Yes boss, a contact named '{top.get('name')}' exists with phone number {top.get('phone')}.",
+                    }
+                )
+            else:
+                candidate_list = [f"{m.get('name')} ({m.get('phone')})" for m in matches[:3]]
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={
+                        "exists": True,
+                        "multiple_candidates": True,
+                        "query": str(query),
+                        "candidates": candidate_list,
+                        "message": f"Found {len(matches)} potential contacts: {', '.join(candidate_list)}. Ask the boss which one they meant.",
+                    }
+                )
+
         # 1.5 Server-side WhatsApp controller
         if name == "whatsapp_control" or (name == "send_message" and "whatsapp" in str(args.get("platform", "")).lower()):
             action = args.get("action", "send_text")
@@ -542,9 +589,31 @@ class CloudBrain:
                 )
                 return types.FunctionResponse(id=call_id, name=name, response=res)
 
-            else:  # send_text or default
+            elif action == "send_text":
+                # Guard against verification messages
+                msg_lower = (message or "").strip().lower()
+                if not message or msg_lower in {"checking for contact existence.", "checking for contact existence", "test", "check"}:
+                    return types.FunctionResponse(
+                        id=call_id,
+                        name=name,
+                        response={"error": "Refused to send verification message. Use search_contact to check if a contact exists."}
+                    )
+
+                # Self-recipient resolution ('me', 'myself', 'boss') -> user's own number
+                if recipient.strip().lower() in {"me", "myself", "self", "boss"}:
+                    if gateway.linked_phone:
+                        recipient = gateway.linked_phone
+
                 res = gateway.send_text(recipient, message)
                 return types.FunctionResponse(id=call_id, name=name, response=res)
+
+            else:
+                # Unknown action: do NOT send text blindly!
+                return types.FunctionResponse(
+                    id=call_id,
+                    name=name,
+                    response={"error": f"Unknown WhatsApp action '{action}'. To search contacts, use search_contact. To send a message, use send_text."}
+                )
 
         # 1.6 Server-side live utility APIs (Open-Meteo, Nominatim, Frankfurter, Wikipedia, QuickChart, Advice, Joke, TinyURL)
         if name in {

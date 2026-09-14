@@ -224,10 +224,30 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "search_contact",
+        "description": (
+            "Searches the user's phonebook and WhatsApp contacts for a person, name, nickname, or title. "
+            "Use this tool whenever the user asks 'do I have a contact for X?', 'is there a contact called X?', "
+            "'check if X exists', 'find contact X', or 'what is X's phone number?'. "
+            "CRITICAL: NEVER use send_message or send_text to test if a contact exists!"
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Name, nickname, relationship, or title to search (e.g. 'Sumit', 'Professor Sir', 'Rahul', 'Mom', 'Doctor')"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "whatsapp_control",
         "description": (
             "Direct server-side WhatsApp controller. "
             "Send text messages, photos, PDFs, Word/Excel documents to any contact. "
+            "Search or check contact existence in phonebook and WhatsApp (action='search_contact'). "
             "Read recent incoming and outgoing messages to brief Abhay on his chats. "
             "Manage the VIP auto-reply whitelist (add_vip, remove_vip, list_vip), "
             "check WhatsApp status, or switch modes (notify_only, whitelist, auto_pilot)."
@@ -237,11 +257,15 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "send_text | send_image | send_document | check_status | save_contact | read_messages | add_vip | remove_vip | list_vip | set_mode"
+                    "description": "send_text | send_image | send_document | search_contact | check_status | save_contact | read_messages | add_vip | remove_vip | list_vip | set_mode"
                 },
                 "recipient": {
                     "type": "STRING",
                     "description": "Contact name (e.g. 'Rahul', 'Mom', 'Boss') or phone number with country code (e.g. '+919876543210')"
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "Name, nickname, or number to search when action is search_contact"
                 },
                 "message": {
                     "type": "STRING",

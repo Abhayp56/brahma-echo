@@ -58,6 +58,18 @@ def resolve_phone_number(recipient: str) -> Optional[str]:
     if len(clean) >= 7 and (len(clean) / max(len(recipient.strip()), 1)) > 0.6:
         return clean
 
+    # 0. Check for self-reference ('me', 'myself', 'self', 'boss') -> user's own WhatsApp number
+    name_clean = recipient.strip().lower()
+    if name_clean in {"me", "myself", "self", "boss"}:
+        try:
+            from cloud.whatsapp_gateway import WhatsAppGateway
+            gw = WhatsAppGateway.get_instance()
+            if gw.linked_phone:
+                logger.info(f"Self-reference '{recipient}' resolved to user's linked WhatsApp phone: {gw.linked_phone}")
+                return gw.linked_phone
+        except Exception:
+            pass
+
     # 1. First check unified ContactsManager (Android auto-sync + WhatsApp learned aliases)
     try:
         from cloud.contacts_manager import get_contacts_manager

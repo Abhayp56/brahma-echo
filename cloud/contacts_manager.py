@@ -8,6 +8,7 @@ their WhatsApp chat name (e.g. 'Broski'), or custom voice-taught nicknames (e.g.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import re
@@ -19,6 +20,32 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("ContactsManager")
+
+HONORIFIC_SYNONYMS: Dict[str, Set[str]] = {
+    "prof": {"prof", "professor"},
+    "professor": {"prof", "professor"},
+    "dr": {"dr", "doc", "doctor"},
+    "doc": {"dr", "doc", "doctor"},
+    "doctor": {"dr", "doc", "doctor"},
+    "sir": {"sir"},
+    "madam": {"madam", "maam"},
+    "maam": {"madam", "maam"},
+    "bro": {"bro", "brother", "bhai", "bhaiya", "broski"},
+    "brother": {"bro", "brother", "bhai", "bhaiya", "broski"},
+    "bhai": {"bro", "brother", "bhai", "bhaiya", "broski"},
+    "bhaiya": {"bro", "brother", "bhai", "bhaiya", "broski"},
+    "broski": {"bro", "brother", "bhai", "bhaiya", "broski"},
+    "sis": {"sis", "sister", "didi"},
+    "sister": {"sis", "sister", "didi"},
+    "didi": {"sis", "sister", "didi"},
+    "mom": {"mom", "mother", "mummy", "maa"},
+    "mother": {"mom", "mother", "mummy", "maa"},
+    "mummy": {"mom", "mother", "mummy", "maa"},
+    "maa": {"mom", "mother", "mummy", "maa"},
+    "dad": {"dad", "father", "papa"},
+    "father": {"dad", "father", "papa"},
+    "papa": {"dad", "father", "papa"},
+}
 
 def _get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -314,7 +341,128 @@ class ContactsManager:
             if any(q in alias for alias in prof.aliases):
                 return prof
 
+        # 6. Multi-token / Fuzzy search fallback (e.g. 'professor sir' -> 'Prof. Sharma' or 'Sharma Sir')
+        fuzzy_candidates = self._find_contacts_internal(q, limit=3)
+        if fuzzy_candidates:
+            top = fuzzy_candidates[0]
+            if top.get("score", 0) >= 0.65:
+                return top.get("_profile")
+
         return None
+
+    def _find_contacts_internal(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Internal multi-token fuzzy search engine.
+        Scores profiles based on:
+        1. Exact full name / alias match (score 1.0)
+        2. Exact token overlap with honorific/synonym expansion (score 0.7 - 0.95)
+        3. Substring / word-boundary inclusion (score 0.6 - 0.8)
+        4. Sequence similarity ratio (difflib) for typos/misspellings (score 0.5 - 0.7)
+        """
+        q_raw = query.strip().lower()
+        if not q_raw:
+            return []
+
+        # Remove extra punctuation for token matching
+        tokens = [t for t in re.split(r"[\s._\-,/]+", q_raw) if t]
+        if not tokens:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for prof in self._profiles.values():
+            names = [prof.phone_name, prof.whatsapp_name] + list(prof.aliases)
+            valid_names = [n.strip() for n in names if n and n.strip()]
+            if not valid_names:
+                continue
+
+            primary_display = prof.phone_name or prof.whatsapp_name or prof.phone
+            clean_names_lower = [n.lower() for n in valid_names]
+
+            # 1. Exact full string match
+            if q_raw in clean_names_lower:
+                results.append({
+                    "phone": prof.phone,
+                    "name": primary_display,
+                    "phone_name": prof.phone_name,
+                    "whatsapp_name": prof.whatsapp_name,
+                    "aliases": sorted(list(prof.aliases)),
+                    "score": 1.0,
+                    "match_reason": "exact_match",
+                    "_profile": prof,
+                })
+                continue
+
+            # Extract contact tokens and expand synonyms
+            contact_tokens: Set[str] = set()
+            for n in clean_names_lower:
+                for ct in re.split(r"[\s._\-,/]+", n):
+                    if ct:
+                        contact_tokens.add(ct)
+                        if ct in HONORIFIC_SYNONYMS:
+                            contact_tokens.update(HONORIFIC_SYNONYMS[ct])
+
+            # Measure token match coverage
+            exact_tokens_matched = 0
+            partial_tokens_matched = 0
+            for t in tokens:
+                expanded_query = HONORIFIC_SYNONYMS.get(t, {t})
+                if any(syn in contact_tokens for syn in expanded_query):
+                    exact_tokens_matched += 1
+                elif any(any(syn in ct or ct in syn for syn in expanded_query) for ct in contact_tokens if len(ct) >= 3):
+                    partial_tokens_matched += 1
+
+            token_coverage = (exact_tokens_matched + 0.5 * partial_tokens_matched) / len(tokens)
+
+            # Sequence similarity ratio
+            sim_ratio = max((difflib.SequenceMatcher(None, q_raw, n).ratio() for n in clean_names_lower), default=0.0)
+
+            # Substring bonus: if entire query is contained in one of the names
+            substring_bonus = 0.2 if any(q_raw in n for n in clean_names_lower) else 0.0
+
+            # Calculate composite score
+            score = 0.0
+            reason = "fuzzy"
+            if exact_tokens_matched == len(tokens):
+                score = 0.95
+                reason = "all_tokens_matched"
+            elif exact_tokens_matched > 0:
+                score = max(0.60 + 0.30 * token_coverage + substring_bonus, sim_ratio)
+                reason = f"matched_{exact_tokens_matched}_of_{len(tokens)}_tokens"
+            elif sim_ratio >= 0.65:
+                score = sim_ratio
+                reason = "spelling_similarity"
+            elif substring_bonus > 0:
+                score = 0.65
+                reason = "substring_match"
+
+            if score >= 0.50:
+                results.append({
+                    "phone": prof.phone,
+                    "name": primary_display,
+                    "phone_name": prof.phone_name,
+                    "whatsapp_name": prof.whatsapp_name,
+                    "aliases": sorted(list(prof.aliases)),
+                    "score": round(score, 2),
+                    "match_reason": reason,
+                    "_profile": prof,
+                })
+
+        # Sort descending by score
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
+
+    def find_contacts(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Public fuzzy search method: returns ranked list of candidate contact dicts
+        for checking existence, disambiguation, or suggestions without sending messages.
+        """
+        with self._lock:
+            candidates = self._find_contacts_internal(query, limit=limit)
+            clean_res = []
+            for c in candidates:
+                item = {k: v for k, v in c.items() if not k.startswith("_")}
+                clean_res.append(item)
+            return clean_res
 
     def resolve(self, recipient: str) -> Optional[ContactProfile]:
         """
