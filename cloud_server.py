@@ -266,7 +266,10 @@ class CloudPhoneHub:
         self.phone_info["connected_at"] = time.time()
         logger.info(f"📱 Phone connected directly to Cloud Server: {self.phone_info.get('name', 'Android Phone')}")
 
-    def unregister_phone(self):
+    def unregister_phone(self, ws: Optional[WebSocket] = None):
+        if ws is not None and self.phone_ws is not ws:
+            logger.info("📱 Ignoring unregister from stale phone WebSocket connection.")
+            return
         logger.info("📱 Phone disconnected from Cloud Server.")
         self.phone_ws = None
         self.phone_info = {}
@@ -1011,7 +1014,7 @@ async def websocket_phone_companion(websocket: WebSocket):
         logger.warning(f"Phone WebSocket error: {exc}")
     finally:
         if phone_registered:
-            phone_hub.unregister_phone()
+            phone_hub.unregister_phone(websocket)
             broadcast_phone_status_to_web()
 
 

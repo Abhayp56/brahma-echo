@@ -89,6 +89,10 @@ class BrahmaConnectForegroundService : Service() {
     }
 
     private fun connectIfPossible() {
+        if (AgentStateStore.connectionState.value == ConnectionState.CONNECTED) {
+            return
+        }
+
         var endpoint = AgentStateStore.gateway.value
         val credential = storage.loadCredential()
         val offer = AgentStateStore.pairingOffer.value ?: storage.loadGatewayHint()
@@ -139,7 +143,8 @@ class BrahmaConnectForegroundService : Service() {
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     android.util.Log.i("BrahmaService", "Network became available! Re-evaluating connection...")
-                    if (AgentStateStore.connectionState.value != ConnectionState.CONNECTED) {
+                    val state = AgentStateStore.connectionState.value
+                    if (state != ConnectionState.CONNECTED && state != ConnectionState.CONNECTING) {
                         scope.launch {
                             connectIfPossible()
                         }

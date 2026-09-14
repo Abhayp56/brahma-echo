@@ -72,7 +72,14 @@ class BrahmaWebSocketClient(
     private var reconnectJob: Job? = null
 
     fun connect(endpoint: GatewayEndpoint, credential: DeviceCredential? = storage.loadCredential(), offer: PairingOffer? = null) {
-        if (socket != null && currentEndpoint == endpoint) {
+        val now = SystemClock.elapsedRealtime()
+        val state = AgentStateStore.connectionState.value
+        if (socket != null && (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING)) {
+            if (now - lastConnectUptime < 5000L) {
+                return
+            }
+        }
+        if (socket != null && currentEndpoint?.url == endpoint.url && currentEndpoint?.host == endpoint.host && state == ConnectionState.CONNECTED) {
             currentCredential = credential ?: currentCredential
             currentOffer = offer ?: currentOffer
             AgentStateStore.setGateway(endpoint)
@@ -83,7 +90,7 @@ class BrahmaWebSocketClient(
         currentOffer = offer
         manualDisconnect = false
         reconnectAttempt = 0
-        lastConnectUptime = SystemClock.elapsedRealtime()
+        lastConnectUptime = now
         AgentStateStore.setGateway(endpoint)
         AgentStateStore.setConnectionState(ConnectionState.CONNECTING)
         AgentStateStore.setStatus("Connecting to ${endpoint.name}")

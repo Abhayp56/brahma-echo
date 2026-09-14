@@ -145,17 +145,20 @@ class WhatsAppGateway:
             except Exception as e:
                 logger.warning(f"Error in WhatsApp event listener: {e}")
 
-    def backup_session_to_supabase(self) -> bool:
+    def backup_session_to_supabase(self, delay_seconds: float = 0.0) -> bool:
         """Compress and backup whatsapp_session.db to Supabase cloud vault."""
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
+
         if not SESSION_PATH.exists() or SESSION_PATH.stat().st_size == 0:
             return False
         try:
             from memory.supabase_memory import save_or_update_memory_supabase
 
-            # Checkpoint WAL if present so all changes are merged into the main db file
+            # Use non-blocking PASSIVE checkpoint so active writes by whatsmeow are never locked
             try:
-                conn = sqlite3.connect(str(SESSION_PATH), timeout=5)
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn = sqlite3.connect(str(SESSION_PATH), timeout=1)
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
                 conn.close()
             except Exception:
                 pass
@@ -279,15 +282,15 @@ class WhatsAppGateway:
                     pass
 
             self._broadcast("whatsapp_status", self.get_status())
-            # Backup session to Supabase in a background thread so it survives container restarts
-            threading.Thread(target=self.backup_session_to_supabase, daemon=True).start()
+            # Backup session to Supabase after 25s so whatsmeow initial sync finishes without db lock
+            threading.Thread(target=self.backup_session_to_supabase, args=(25.0,), daemon=True).start()
 
         # 3. Pairing Status Event
         @self.client.event(PairStatusEv)
         def on_pair_status(client_inst, event: PairStatusEv):
             logger.info(f"WhatsApp Pair Status: {event}")
             if "success" in str(event).lower():
-                threading.Thread(target=self.backup_session_to_supabase, daemon=True).start()
+                threading.Thread(target=self.backup_session_to_supabase, args=(10.0,), daemon=True).start()
 
         # 4. Inbound Message Event
         @self.client.event(MessageEv)
