@@ -628,12 +628,30 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "get_current_time",
+        "description": (
+            "Returns the exact, current Indian Standard Time (IST, UTC+05:30), date, and day of the week in India. "
+            "Call this whenever the user asks 'what time is it?', 'what is the current time?', "
+            "'what is today's date?', or 'what day is it today?'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
         "name": "daily_briefing",
-        "description": "Delivers a complete daily briefing including time, date, today's schedule, and headlines.",
+        "description": (
+            "Direct server-side executive briefing. Delivers a complete daily/morning briefing including "
+            "exact Indian Standard Time (IST), live local weather at the user's phone location, "
+            "today's schedule/events, unread emails, WhatsApp messages, and top news headlines. "
+            "Runs 100% on the cloud server with zero laptop dependency."
+        ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "category": {"type": "STRING", "description": "Optional category: all (default), tech, world"}
+                "category": {"type": "STRING", "description": "Optional category focus: all (default), tech, world, business"}
             },
             "required": []
         }

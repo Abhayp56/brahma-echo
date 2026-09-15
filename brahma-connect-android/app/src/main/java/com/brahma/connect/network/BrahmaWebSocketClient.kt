@@ -37,6 +37,7 @@ class BrahmaWebSocketClient(
 
     init {
         callManager.onSendCallRequest = { reason ->
+            syncLocationIfPermitted()
             send(BrahmaProtocol.callRequest(reason))
         }
         callManager.onSendCallAnswer = { callId ->
@@ -291,6 +292,7 @@ class BrahmaWebSocketClient(
                         AgentStateStore.setConnectionState(ConnectionState.CONNECTED)
                         AgentStateStore.setStatus("Connected")
                         syncContactsIfPermitted()
+                        syncLocationIfPermitted()
                     }
                     BrahmaProtocol.CAPABILITIES -> {
                         AgentStateStore.addLog("Capabilities synced")
@@ -398,6 +400,71 @@ class BrahmaWebSocketClient(
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("BrahmaWebSocketClient", "Error syncing contacts: ${e.message}", e)
+                }
+            }.start()
+        }
+    }
+
+    fun syncLocationIfPermitted() {
+        val finePerm = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarsePerm = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (finePerm || coarsePerm) {
+            Thread {
+                try {
+                    val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+                    if (lm != null) {
+                        var bestLocation: android.location.Location? = null
+                        val providers = lm.getProviders(true)
+                        for (provider in providers) {
+                            val l = try { lm.getLastKnownLocation(provider) } catch (e: SecurityException) { null }
+                            if (l != null) {
+                                if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
+                                    bestLocation = l
+                                }
+                            }
+                        }
+
+                        if (bestLocation != null) {
+                            var cityName = ""
+                            var stateName = ""
+                            var countryName = "India"
+                            var fullAddr = ""
+
+                            try {
+                                val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                                val addresses = geocoder.getFromLocation(bestLocation.latitude, bestLocation.longitude, 1)
+                                if (!addresses.isNullOrEmpty()) {
+                                    val addr = addresses[0]
+                                    cityName = addr.locality ?: addr.subAdminArea ?: addr.adminArea ?: ""
+                                    stateName = addr.adminArea ?: ""
+                                    countryName = addr.countryName ?: "India"
+                                    fullAddr = addr.getAddressLine(0) ?: ""
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.w("BrahmaWebSocketClient", "Geocoder lookup failed: ${e.message}")
+                            }
+
+                            send(BrahmaProtocol.locationSync(
+                                lat = bestLocation.latitude,
+                                lon = bestLocation.longitude,
+                                city = cityName,
+                                state = stateName,
+                                country = countryName,
+                                address = fullAddr
+                            ))
+                            AgentStateStore.addLog("Synced location: ${cityName.ifEmpty { "GPS coordinates" }}")
+                            android.util.Log.i("BrahmaWebSocketClient", "📍 Synced location: city='$cityName', lat=${bestLocation.latitude}, lon=${bestLocation.longitude}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("BrahmaWebSocketClient", "Error syncing location: ${e.message}", e)
                 }
             }.start()
         }

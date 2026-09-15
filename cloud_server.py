@@ -191,6 +191,27 @@ class CloudPhoneHub:
         self.pairing_offers: Dict[str, Dict[str, Any]] = {}
         self.device_secret: str = self._load_or_create_device_secret()
         self.device_id: str = "android_companion_primary"
+        from cloud.cloud_daily_briefing import load_phone_location
+        self.phone_location: Dict[str, Any] = load_phone_location()
+        self.last_first_call_date_ist: str = self._load_last_first_call_date()
+
+    def _load_last_first_call_date(self) -> str:
+        date_file = BASE_DIR / "config" / "last_first_call_date.txt"
+        if date_file.exists():
+            try:
+                return date_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+        return ""
+
+    def mark_first_call_done(self, date_ist_str: str) -> None:
+        self.last_first_call_date_ist = date_ist_str
+        date_file = BASE_DIR / "config" / "last_first_call_date.txt"
+        try:
+            date_file.parent.mkdir(parents=True, exist_ok=True)
+            date_file.write_text(date_ist_str, encoding="utf-8")
+        except Exception:
+            pass
 
     def _load_or_create_device_secret(self) -> str:
         secret_file = BASE_DIR / "config" / "phone_device_secret.txt"
@@ -840,10 +861,57 @@ async def api_trigger_phone_call(data: Dict[str, Any] | None = None):
     return await phone_hub.call_phone(caller_name=caller, reason=reason)
 
 
-@app.post("/api/phone/end-call")
-async def api_end_phone_call():
-    """Hangs up any active phone call."""
-    return await phone_hub.end_call()
+async def trigger_call_greeting(reason: str):
+    """
+    Intelligently triggers the initial voice greeting when a phone call is connected:
+    - If it's the FIRST CALL OF THE DAY: Delivers a full morning executive briefing
+      (exact IST time, live weather for phone location, schedule, emails, WhatsApp, headlines).
+    - On subsequent calls of the same day: Delivers a crisp, warm, natural ARYA greeting.
+    """
+    if not brain:
+        return
+    try:
+        from cloud.cloud_daily_briefing import get_now_ist, compile_server_daily_briefing
+        now_ist = get_now_ist()
+        today_date_ist = now_ist.strftime("%Y-%m-%d")
+
+        is_first_call = (phone_hub.last_first_call_date_ist != today_date_ist)
+        if is_first_call:
+            phone_hub.mark_first_call_done(today_date_ist)
+            logger.info(f"🌅 First call of today ({today_date_ist}) detected! Compiling morning briefing...")
+            briefing = await compile_server_daily_briefing(category="all")
+            sched_str = ", ".join(briefing.get("schedule", [])) if briefing.get("schedule") else "No calendar meetings scheduled"
+            email_info = briefing.get("emails", {})
+            email_str = f"{email_info.get('count', 0)} unread emails" if email_info.get("has_unread") else "Inbox clean"
+            wa_info = briefing.get("whatsapp", {})
+            wa_str = wa_info.get("summary", "No pending messages")
+            headline = briefing.get("headlines", ["All systems operational"])[0] if briefing.get("headlines") else "Systems green"
+
+            greeting = (
+                f"[FIRST CALL OF THE DAY - MORNING EXECUTIVE BRIEFING]\n"
+                f"Today is {briefing['date']}, exact time is {briefing['time']}.\n"
+                f"This is the boss's FIRST phone call of the day! Greet Abhay with supreme energy, confidence, and warmth as ARYA!\n"
+                f"Deliver his executive morning briefing smoothly covering:\n"
+                f"1. Warm morning/daily greeting and exact IST time ({briefing['time']})\n"
+                f"2. Local weather in {briefing['location']}: {briefing['weather']}\n"
+                f"3. Today's schedule: {sched_str}\n"
+                f"4. Communications: {email_str} | WhatsApp: {wa_str}\n"
+                f"5. Top headline: {headline}\n\n"
+                f"Spoken guide:\n\"{briefing['narrative']}\"\n\n"
+                f"Deliver this in 3-4 punchy, natural sentences, and conclude by asking how you can assist him today!"
+            )
+        else:
+            time_str = now_ist.strftime("%I:%M %p IST")
+            greeting = (
+                f"[The user just called you directly from their Android phone (reason: '{reason}'). "
+                f"Current IST time is {time_str}. Greet the user warmly, smartly, and naturally as ARYA right now! Ask how you can assist them!]"
+            )
+
+        await brain.handle_text_command(greeting)
+    except Exception as gerr:
+        logger.error(f"Error triggering call greeting: {gerr}")
+        if brain:
+            await brain.handle_text_command("[Voice call connected with user on phone. Greet the user warmly and ask how you can assist them!]")
 
 
 @app.websocket("/ws/phone")
@@ -925,6 +993,38 @@ async def websocket_phone_companion(websocket: WebSocket):
                 except Exception as cex:
                     logger.error(f"Error processing contacts_sync: {cex}")
 
+            # 3c. Phone Location Auto-Sync (GPS & Locality for accurate localized weather)
+            elif msg_type == "location_sync":
+                lat = payload.get("lat") or payload.get("latitude")
+                lon = payload.get("lon") or payload.get("longitude")
+                city = payload.get("city") or payload.get("locality", "")
+                state = payload.get("state") or payload.get("admin_area", "")
+                country = payload.get("country", "India")
+                address = payload.get("address", "")
+                logger.info(f"📍 Received location_sync from phone: city='{city}', lat={lat}, lon={lon}")
+                try:
+                    from cloud.cloud_daily_briefing import save_phone_location
+                    loc_info = {
+                        "lat": float(lat) if lat is not None else None,
+                        "lon": float(lon) if lon is not None else None,
+                        "city": str(city).strip(),
+                        "state": str(state).strip(),
+                        "country": str(country).strip(),
+                        "address": str(address).strip(),
+                        "updated_at": now_iso(),
+                    }
+                    phone_hub.phone_location = loc_info
+                    save_phone_location(loc_info)
+                    reply = {
+                        "type": "result",
+                        "request_id": req_id,
+                        "timestamp": now_iso(),
+                        "payload": {"status": "ok", "location": loc_info},
+                    }
+                    await websocket.send_text(json.dumps(reply))
+                except Exception as lex:
+                    logger.error(f"Error processing location_sync: {lex}")
+
             # 4. Call Answered
             elif msg_type == "call_answer":
                 call_id = payload.get("call_id")
@@ -939,9 +1039,7 @@ async def websocket_phone_companion(websocket: WebSocket):
                     reason = target_call.get("reason", "Voice Call")
                     logger.info(f"📞 Android call {call_id} is now ACTIVE. Triggering voice greeting...")
                     broadcast_phone_status_to_web()
-                    if brain:
-                        greeting = f"[Voice call connected with user on phone for: '{reason}'. Greet the user naturally, concisely, and warmly right now to start the live conversation!]"
-                        asyncio.create_task(brain.handle_text_command(greeting))
+                    asyncio.create_task(trigger_call_greeting(reason))
 
             # 4b. User-Initiated Outbound Call from Android App ("Call ARYA" button)
             elif msg_type == "call_request":
@@ -963,12 +1061,7 @@ async def websocket_phone_companion(websocket: WebSocket):
                 }
                 await websocket.send_text(json.dumps(reply))
                 broadcast_phone_status_to_web()
-                if brain:
-                    greeting = (
-                        f"[The user just called you directly from their Android phone (reason: '{reason}'). "
-                        "Greet the user warmly, smartly, and naturally as ARYA right now! Ask how you can assist them!]"
-                    )
-                    asyncio.create_task(brain.handle_text_command(greeting))
+                asyncio.create_task(trigger_call_greeting(reason))
 
             # 5. Call Rejected
             elif msg_type == "call_reject":

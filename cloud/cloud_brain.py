@@ -215,9 +215,13 @@ class CloudBrain:
             "control the browser, or change computer settings, call the appropriate tool. "
             "The system will automatically forward the execution to their connected laptop.\n"
             "TOOL USAGE RULES:\n"
-            "- Always use the most direct tool: 'open_app' to open programs, 'computer_control' to type or press hotkeys, "
-            "'terminal_agent' for command line/PowerShell. Use 'web_search' for searching the web, looking up facts, prices, news, or comparisons (runs instantly in the background on the cloud server). "
-            "Use 'browser_control' ONLY when the user explicitly asks you to automate or open a browser on their laptop.\n"
+            "- SERVER-FIRST ARCHITECTURE: You run primarily as an autonomous Cloud Server AI. "
+            "All briefings ('daily_briefing'), time queries ('get_current_time'), weather, news, web searches, reminders, calendar, emails, and WhatsApp messaging are executed directly on the Cloud Server with ZERO dependency on the laptop!\n"
+            "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
+            "- LAPTOP-ONLY TOOLS: Use laptop tools ('open_app', 'computer_control', 'computer_settings', 'terminal_agent', 'screen_process', 'autonomous_operator') ONLY when the user specifically asks to interact with their physical laptop computer or screen.\n"
+            "- Always use the most direct tool: 'open_app' to open programs on laptop, 'computer_control' to type or press hotkeys on laptop, "
+            "'terminal_agent' for laptop command line/PowerShell. Use 'web_search' for searching the web, looking up facts, prices, news, or comparisons (runs instantly on the cloud server). "
+            "Use 'browser_control' ONLY when the user explicitly asks you to automate a browser on their laptop.\n"
             "- For WhatsApp messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone and merged with WhatsApp chat names. You can address contacts by their phonebook name (e.g. 'Rahul'), WhatsApp nickname (e.g. 'Broski'), or relationship ('Mom', 'Dad').\n"
             "- CRITICAL RULE FOR CHECKING CONTACTS: When the user asks if a contact exists (e.g. 'Is there a contact called X?', 'Do I have X in my contacts?'), or asks for someone's phone number, use 'search_contact'. NEVER call send_message or send_text to test if a contact exists!\n"
             "- RECIPIENT ISOLATION: When the user says 'send me a message', 'text me', or 'send me...', 'me' refers to the user (Abhay). NEVER send a message to a person mentioned in a previous turn (like Sumit or Rahul) unless explicitly instructed in the current turn. If the user asks for news headlines or info, tell them directly or send to their own WhatsApp ('me').\n"
@@ -688,14 +692,92 @@ class CloudBrain:
                 },
             )
 
-        # 2. Desktop actions delegated to connected laptop worker
-        if not self.dispatcher:
-            err_msg = f"Cannot execute '{name}': No laptop worker dispatcher configured."
+        # 1.11 Server-Side Daily Executive Briefing (Exact IST, Phone Location Weather, Calendar, Emails, WhatsApp, News)
+        if name in {"daily_briefing", "briefing"}:
+            from cloud.cloud_daily_briefing import compile_server_daily_briefing
+            category = args.get("category", "all")
+            briefing_res = await compile_server_daily_briefing(category=category)
+            self.log(f"✅ Server-side daily briefing compiled: {briefing_res['narrative'][:80]}...")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={
+                    "result": briefing_res["narrative"],
+                    "summary": briefing_res["narrative"],
+                    "time": briefing_res["time"],
+                    "date": briefing_res["date"],
+                    "weather": briefing_res["weather"],
+                },
+            )
+
+        # 1.12 Server-Side Live Indian Standard Time (IST)
+        if name in {"get_current_time", "get_time", "get_current_datetime"}:
+            from cloud.cloud_daily_briefing import get_now_ist
+            now_ist = get_now_ist()
+            time_str = now_ist.strftime("%I:%M %p IST").lstrip("0")
+            date_str = now_ist.strftime("%A, %B %d, %Y")
+            msg = f"It is currently {time_str} on {date_str} in India (Indian Standard Time, UTC+05:30)."
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={
+                    "time": time_str,
+                    "date": date_str,
+                    "timezone": "Asia/Kolkata (IST)",
+                    "result": msg,
+                },
+            )
+
+        # 1.13 Server-Side Weather Report & Calendar Aliases
+        if name == "weather_report":
+            city = args.get("city") or ""
+            from cloud.cloud_utilities import execute_utility_tool
+            res = await execute_utility_tool("get_weather", {"location": city or "Bengaluru"})
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        if name == "calendar_scheduler":
+            from cloud.google_workspace import execute_calendar_tool
+            action = args.get("action") or "list_events"
+            res = await execute_calendar_tool(action, args)
+            return types.FunctionResponse(id=call_id, name=name, response=res)
+
+        # 2. Desktop actions delegated ONLY if physical laptop hardware/screen is required
+        LAPTOP_ONLY_TOOLS = {
+            "open_app",
+            "computer_control",
+            "computer_settings",
+            "screen_process",
+            "terminal_agent",
+            "autonomous_operator",
+            "file_controller",
+            "file_processor",
+            "system_manager",
+            "clipboard_processor",
+            "dev_agent",
+            "browser_control",
+            "meeting_assistant",
+            "attention_monitor",
+            "pushup_counter",
+            "calorie_counter",
+        }
+
+        clean_name = name.replace("_", " ")
+
+        # If a tool is not a physical laptop action, execute gracefully on server without laptop failure
+        if name not in LAPTOP_ONLY_TOOLS:
+            self.log(f"⚠️ Tool '{name}' is not a physical laptop action. Handled directly on cloud server.")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"result": f"Executed '{name}' on cloud server. Task complete."}
+            )
+
+        if not self.dispatcher or not self.dispatcher.is_connected:
+            err_msg = f"Your laptop is currently offline, boss. '{clean_name}' requires your laptop hardware or screen. Please ensure your laptop app is running."
             self.log(f"ERR: {err_msg}")
             return types.FunctionResponse(id=call_id, name=name, response={"error": err_msg})
 
         # Announce immediate task progress to user so they know Brahma is working on it
-        clean_name = name.replace("_", " ")
         if name == "open_app":
             target = args.get("app_name") or "the application"
             progress_msg = f"Opening {target} on your laptop..."

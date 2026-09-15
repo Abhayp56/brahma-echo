@@ -26,15 +26,22 @@ class MainActivity : ComponentActivity() {
         // The UI will react by showing the scanner if permission is granted.
     }
 
-    private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) {
-            AgentStateStore.setError("Microphone permission is required for voice calls.")
-        }
-    }
-
     private val contactsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             AgentStateStore.addLog("Contacts permission granted")
+        }
+    }
+
+    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
+        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true || perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            AgentStateStore.addLog("Location permission granted for weather & briefing")
+        }
+    }
+
+    private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            AgentStateStore.addLog("Microphone permission granted for voice calls")
         }
     }
 
@@ -86,6 +93,7 @@ class MainActivity : ComponentActivity() {
         ensureCameraPermission()
         ensureAudioPermission()
         ensureContactsPermission()
+        ensureLocationPermission()
         ensureBatteryOptimizationExemption()
         setContent {
             BrahmaConnectTheme {
@@ -131,6 +139,14 @@ class MainActivity : ComponentActivity() {
     private fun ensureContactsPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
             contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+        }
+    }
+
+    private fun ensureLocationPermission() {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) {
+            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 

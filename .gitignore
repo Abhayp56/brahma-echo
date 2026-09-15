@@ -34,6 +34,8 @@ config/certs/
 memory/long_term.json
 memory/contacts.json
 memory/contacts_book.json
+memory/phone_location.json
+config/last_first_call_date.txt
 
 # Local test/debug artifacts
 _run.out.txt

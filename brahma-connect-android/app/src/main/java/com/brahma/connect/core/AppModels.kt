@@ -178,8 +178,22 @@ object BrahmaProtocol {
     const val CALL_SPEECH_TEXT = "call_speech_text"
     const val CALL_TURN_COMPLETE = "call_turn_complete"
 
-    // Contacts Auto-Sync Protocol
+    // Contacts & Location Auto-Sync Protocol
     const val CONTACTS_SYNC = "contacts_sync"
+    const val LOCATION_SYNC = "location_sync"
+
+    fun locationSync(lat: Double, lon: Double, city: String = "", state: String = "", country: String = "India", address: String = ""): JSONObject {
+        return envelope(
+            LOCATION_SYNC,
+            JSONObject()
+                .put("lat", lat)
+                .put("lon", lon)
+                .put("city", city)
+                .put("state", state)
+                .put("country", country)
+                .put("address", address)
+        )
+    }
 
     fun envelope(type: String, payload: JSONObject = JSONObject(), requestId: String = UUID.randomUUID().toString().replace("-", "")): JSONObject {
         return JSONObject()

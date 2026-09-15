@@ -101,11 +101,12 @@ def _get_today_schedule() -> list[str]:
 
 def compile_daily_briefing(category: str = "all") -> str:
     """
-    Compiles a complete daily briefing.
+    Compiles a complete daily briefing in Indian Standard Time (IST).
     """
-    now = datetime.datetime.now()
-    time_str = now.strftime("%I:%M %p").lstrip("0")
-    date_str = now.strftime("%A, %B %d")
+    from zoneinfo import ZoneInfo
+    now = datetime.datetime.now(ZoneInfo("Asia/Kolkata"))
+    time_str = now.strftime("%I:%M %p IST").lstrip("0")
+    date_str = now.strftime("%A, %B %d, %Y")
 
     greeting = "Good morning"
     if now.hour >= 12 and now.hour < 17:
