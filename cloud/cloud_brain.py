@@ -254,14 +254,14 @@ class CloudBrain:
 
     async def handle_incoming_audio(self, pcm_chunk: bytes):
         """Feed incoming audio from laptop or user mic into Gemini Live."""
-        if not self.session:
+        if not self.session or getattr(self, "_in_turn", False):
             return
         try:
             await self.session.send_realtime_input(
-                media={"data": pcm_chunk, "mime_type": "audio/pcm;rate=16000"}
+                media={"data": pcm_chunk, "mime_type": "audio/pcm"}
             )
         except Exception as e:
-            logger.error(f"Failed to forward realtime audio: {e}")
+            logger.debug(f"Failed to forward realtime audio: {e}")
 
     async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
@@ -293,6 +293,7 @@ class CloudBrain:
             future = loop.create_future()
             self._pending_text_futures.append(future)
         try:
+            self._in_turn = True
             self.log(f"User (Text): {text}")
             await self.session.send(input=text, end_of_turn=True)
             if future:
@@ -306,6 +307,7 @@ class CloudBrain:
             logger.error(f"Failed to send text input: {e}")
             return None
         finally:
+            self._in_turn = False
             if future and future in self._pending_text_futures:
                 self._pending_text_futures.remove(future)
 

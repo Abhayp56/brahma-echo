@@ -1082,6 +1082,7 @@ async def websocket_phone_companion(websocket: WebSocket):
             # 7. Incoming Speech Text from Phone (On-Device Speech Recognition - Instant Turn)
             elif msg_type == "call_speech_text":
                 text = payload.get("text", "").strip()
+                phone_hub.last_speech_text_ts = time.time()
                 if text and brain:
                     logger.info(f"🗣️ Phone speech text recognized: '{text}' (call_id={payload.get('call_id')})")
                     await brain.handle_text_command(text)
@@ -1089,6 +1090,9 @@ async def websocket_phone_companion(websocket: WebSocket):
             # 7b. Incoming Audio from Phone Microphone (Raw PCM fallback)
             elif msg_type == "call_audio":
                 b64_data = payload.get("data", "")
+                # Skip raw audio forwarding if phone recently sent transcribed text (avoids 1007 Live API conflict)
+                if time.time() - getattr(phone_hub, "last_speech_text_ts", 0) < 4.0:
+                    continue
                 if b64_data and brain:
                     pcm_bytes = base64.b64decode(b64_data)
                     await brain.handle_incoming_audio(pcm_bytes)

@@ -279,25 +279,62 @@ def create_calendar_event_sync(
     description: str = "",
     location: str = "",
 ) -> Dict[str, Any]:
-    """Create a new event on primary Google Calendar."""
+    """Create a new event on primary Google Calendar with strict type-matching for start & end."""
     if not summary or not start_time:
         return {"success": False, "error": "Summary and start_time are required."}
 
-    # If end_time is not provided, default to 1 hour after start
-    if not end_time:
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    ist_tz = ZoneInfo("Asia/Kolkata")
+
+    clean_start = str(start_time).strip()
+    is_date_only = ("T" not in clean_start and " " not in clean_start and len(clean_start) == 10 and clean_start.count("-") == 2)
+
+    if is_date_only:
+        # All-day event: both start and end MUST be {"date": "YYYY-MM-DD"}
+        start_dict = {"date": clean_start}
+        if end_time and "T" not in str(end_time):
+            end_dict = {"date": str(end_time).strip()}
+        else:
+            try:
+                s_dt = datetime.fromisoformat(clean_start)
+                end_dict = {"date": (s_dt + timedelta(days=1)).strftime("%Y-%m-%d")}
+            except Exception:
+                end_dict = {"date": clean_start}
+    else:
+        # Timed event: both start and end MUST be {"dateTime": "...", "timeZone": "Asia/Kolkata"}
+        s_iso = clean_start.replace(" ", "T")
+        if "T" in s_iso and len(s_iso.split("T")[1]) <= 5:
+            s_iso += ":00"
         try:
-            st = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-            from datetime import timedelta
-            end_time = (st + timedelta(hours=1)).isoformat()
+            st = datetime.fromisoformat(s_iso.replace("Z", "+00:00"))
+            if not st.tzinfo:
+                st = st.replace(tzinfo=ist_tz)
         except Exception:
-            end_time = start_time
+            st = datetime.now(ist_tz) + timedelta(hours=1)
+
+        if end_time:
+            e_iso = str(end_time).strip().replace(" ", "T")
+            if "T" in e_iso and len(e_iso.split("T")[1]) <= 5:
+                e_iso += ":00"
+            try:
+                et = datetime.fromisoformat(e_iso.replace("Z", "+00:00"))
+                if not et.tzinfo:
+                    et = et.replace(tzinfo=ist_tz)
+            except Exception:
+                et = st + timedelta(hours=1)
+        else:
+            et = st + timedelta(hours=1)
+
+        start_dict = {"dateTime": st.isoformat(), "timeZone": "Asia/Kolkata"}
+        end_dict = {"dateTime": et.isoformat(), "timeZone": "Asia/Kolkata"}
 
     body = {
         "summary": summary,
         "description": description,
         "location": location,
-        "start": {"dateTime": start_time} if "T" in start_time else {"date": start_time},
-        "end": {"dateTime": end_time} if "T" in end_time else {"date": end_time},
+        "start": start_dict,
+        "end": end_dict,
     }
 
     url = f"{CALENDAR_API_BASE}/events"
