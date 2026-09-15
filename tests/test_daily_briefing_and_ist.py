@@ -46,8 +46,9 @@ class TestDailyBriefingAndIST(unittest.TestCase):
         res = asyncio.run(compile_server_daily_briefing("all"))
         self.assertTrue(res.get("success"))
         self.assertIn("IST", res.get("time", ""))
-        self.assertIn("Bengaluru", res.get("narrative", ""))
-        self.assertIn("What are your orders", res.get("narrative", ""))
+        self.assertIn("Bengaluru", res.get("narrative_hindi", ""))
+        self.assertIn("मदद", res.get("narrative_hindi", ""))
+        self.assertIn("What are your orders", res.get("narrative_english", ""))
 
 if __name__ == "__main__":
     unittest.main()

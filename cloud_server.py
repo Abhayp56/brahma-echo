@@ -888,30 +888,32 @@ async def trigger_call_greeting(reason: str):
             headline = briefing.get("headlines", ["All systems operational"])[0] if briefing.get("headlines") else "Systems green"
 
             greeting = (
-                f"[FIRST CALL OF THE DAY - MORNING EXECUTIVE BRIEFING]\n"
+                f"[FIRST CALL OF THE DAY - EXECUTIVE DAILY BRIEFING]\n"
                 f"Today is {briefing['date']}, exact time is {briefing['time']}.\n"
-                f"This is the boss's FIRST phone call of the day! Greet Abhay with supreme energy, confidence, and warmth as ARYA!\n"
-                f"Deliver his executive morning briefing smoothly covering:\n"
-                f"1. Warm morning/daily greeting and exact IST time ({briefing['time']})\n"
+                f"This is the boss's FIRST phone call of the day! Greet Abhay with supreme energy, poise, and warmth as ARYA.\n"
+                f"LANGUAGE & IDENTITY RULE: Speak in your natural, fluent Hindi / Hinglish as your primary language using your female identity ('मैं कर रही हूँ', 'मैं बताती हूँ', 'करूँगी').\n"
+                f"Deliver his full executive briefing smoothly without skipping sections:\n"
+                f"1. Warm daily greeting and exact IST time ({briefing['time']})\n"
                 f"2. Local weather in {briefing['location']}: {briefing['weather']}\n"
                 f"3. Today's schedule: {sched_str}\n"
                 f"4. Communications: {email_str} | WhatsApp: {wa_str}\n"
                 f"5. Top headline: {headline}\n\n"
-                f"Spoken guide:\n\"{briefing['narrative']}\"\n\n"
-                f"Deliver this in 3-4 punchy, natural sentences, and conclude by asking how you can assist him today!"
+                f"Spoken guide (Hindi):\n\"{briefing['narrative_hindi']}\"\n\n"
+                f"Speak this in a natural, executive conversational Hindi tone, and conclude by asking how you can assist him today!"
             )
         else:
             time_str = now_ist.strftime("%I:%M %p IST")
             greeting = (
                 f"[The user just called you directly from their Android phone (reason: '{reason}'). "
-                f"Current IST time is {time_str}. Greet the user warmly, smartly, and naturally as ARYA right now! Ask how you can assist them!]"
+                f"Current IST time is {time_str}. Greet the boss warmly and naturally in Hindi as ARYA (female AI co-pilot, 'नमस्ते बॉस, बताइए मैं आपकी क्या मदद करूँ?'). "
+                f"Match the user's language dynamically if they reply in English or Hindi!]"
             )
 
         await brain.handle_text_command(greeting)
     except Exception as gerr:
         logger.error(f"Error triggering call greeting: {gerr}")
         if brain:
-            await brain.handle_text_command("[Voice call connected with user on phone. Greet the user warmly and ask how you can assist them!]")
+            await brain.handle_text_command("[Voice call connected with user on phone. Greet the user warmly as ARYA in Hindi and ask how you can assist them!]")
 
 
 @app.websocket("/ws/phone")
