@@ -98,25 +98,23 @@ CHUNK_SIZE = 1024
 
 def get_api_key() -> str:
     """Retrieve Gemini API key from environment variable, config/api_keys.json, or config/telegram_config.json."""
-    if env_key := os.environ.get("GEMINI_API_KEY"):
+    if env_key := (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         return env_key.strip()
-    if env_key2 := os.environ.get("GOOGLE_API_KEY"):
-        return env_key2.strip()
     if API_CONFIG_PATH.exists():
         try:
             with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if key := data.get("gemini_api_key", "").strip():
-                    return key
+                if k := data.get("gemini_api_key", "").strip():
+                    return k
         except Exception as e:
             logger.warning(f"Could not read {API_CONFIG_PATH}: {e}")
-    tg_config_path = BASE_DIR / "config" / "telegram_config.json"
-    if tg_config_path.exists():
+    tg_cfg_path = BASE_DIR / "config" / "telegram_config.json"
+    if tg_cfg_path.exists():
         try:
-            with open(tg_config_path, "r", encoding="utf-8") as f:
+            with open(tg_cfg_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if key := data.get("gemini_api_key", "").strip():
-                    return key
+                if k := data.get("gemini_api_key", "").strip():
+                    return k
         except Exception:
             pass
     return ""

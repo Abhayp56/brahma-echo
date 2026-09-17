@@ -77,15 +77,34 @@ def save_telegram_config(updates: dict):
 
 
 def _load_api_keys() -> dict:
-    data = _load_json_file(API_KEYS_FILE)
-    tg_cfg = _load_json_file(CONFIG_FILE)
-    if tg_gemini := tg_cfg.get("gemini_api_key"):
-        data.setdefault("gemini_api_key", str(tg_gemini).strip())
-    if env_gemini := (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
-        data["gemini_api_key"] = env_gemini.strip()
-    if env_or := os.environ.get("OPENROUTER_API_KEY"):
-        data["openrouter_api_key"] = env_or.strip()
-    return data
+    return _load_json_file(API_KEYS_FILE)
+
+
+def _get_gemini_api_key() -> str:
+    """Multi-tier Gemini API key resolution: Env Var -> config/api_keys.json -> config/telegram_config.json."""
+    if env_key := (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        return env_key.strip()
+    keys = _load_api_keys()
+    if k := (keys.get("gemini_api_key") or "").strip():
+        return k
+    tg_cfg = load_telegram_config()
+    if k := (tg_cfg.get("gemini_api_key") or "").strip():
+        return k
+    return ""
+
+
+
+def _get_openrouter_api_key() -> str:
+    """Multi-tier OpenRouter API key resolution: Env Var -> config/api_keys.json -> config/telegram_config.json."""
+    if env_key := os.environ.get("OPENROUTER_API_KEY"):
+        return env_key.strip()
+    keys = _load_api_keys()
+    if k := (keys.get("openrouter_api_key") or "").strip():
+        return k
+    tg_cfg = load_telegram_config()
+    if k := (tg_cfg.get("openrouter_api_key") or "").strip():
+        return k
+    return ""
 
 
 class TelegramBotService:
@@ -472,12 +491,18 @@ class TelegramBotService:
             await update.message.reply_text(f"⚠️ Error cancelling reminder: {exc}")
 
     async def _handle_key(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not update.effective_user or (self._chat_id and str(update.effective_user.id) != self._chat_id):
+        user_id = str(update.effective_user.id) if update.effective_user else ""
+        if self._chat_id and user_id != self._chat_id and user_id not in self._allowed_chat_ids:
             await update.message.reply_text("Access restricted to authorized owner.")
             return
         args = context.args or []
         if not args:
-            await update.message.reply_text("Usage: `/key <your_gemini_api_key>`", parse_mode=ParseMode.MARKDOWN)
+            current_key = _get_gemini_api_key()
+            masked = f"{current_key[:6]}...{current_key[-4:]}" if len(current_key) > 10 else ("Set" if current_key else "Not set")
+            await update.message.reply_text(
+                f"🔑 **Current Gemini Key**: `{masked}`\n\nTo update, send:\n`/key <your_gemini_api_key>`",
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
         new_key = args[0].strip()
         save_telegram_config({"gemini_api_key": new_key})
@@ -553,12 +578,17 @@ class TelegramBotService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _generate_reply_with_tools(self, prompt: str) -> str:
-        keys = _load_api_keys()
-        gemini_key = (keys.get("gemini_api_key") or "").strip()
-        if not gemini_key:
-            return "Boss, Gemini API key is missing in config/api_keys.json."
+        gemini_key = _get_gemini_api_key()
+        openrouter_key = _get_openrouter_api_key()
+        if not gemini_key and not openrouter_key:
+            return (
+                "Boss, Gemini API key is not configured on the server yet.\n\n"
+                "You can configure it instantly right here by sending:\n"
+                "`/key <your_gemini_api_key>`\n\n"
+                "Or add GEMINI_API_KEY in your Render dashboard environment variables."
+            )
 
-        client = genai.Client(api_key=gemini_key, http_options={"api_version": "v1beta"})
+        client = genai.Client(api_key=gemini_key, http_options={"api_version": "v1beta"}) if gemini_key else None
 
         from cloud.cloud_daily_briefing import get_now_ist
         now_ist = get_now_ist()
@@ -658,7 +688,13 @@ class TelegramBotService:
 
         except Exception as exc:
             logger.error(f"Gemini fallback chat error: {exc}")
-            return f"Boss, I couldn't reach AI engine right now: {exc}"
+            if openrouter_key:
+                try:
+                    from llm_client import client as openrouter_client
+                    return openrouter_client.chat(prompt, system=system_instruction, temperature=0.5).strip()
+                except Exception as or_exc:
+                    logger.error(f"OpenRouter fallback chat error: {or_exc}")
+            return f"माफ़ कीजिए बॉस, AI इंजन से संपर्क नहीं हो पाया: {exc}"
 
     def _execute_local_tool(self, name: str, args: dict) -> Any:
         try:
