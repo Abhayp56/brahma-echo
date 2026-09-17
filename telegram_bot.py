@@ -77,7 +77,15 @@ def save_telegram_config(updates: dict):
 
 
 def _load_api_keys() -> dict:
-    return _load_json_file(API_KEYS_FILE)
+    data = _load_json_file(API_KEYS_FILE)
+    tg_cfg = _load_json_file(CONFIG_FILE)
+    if tg_gemini := tg_cfg.get("gemini_api_key"):
+        data.setdefault("gemini_api_key", str(tg_gemini).strip())
+    if env_gemini := (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        data["gemini_api_key"] = env_gemini.strip()
+    if env_or := os.environ.get("OPENROUTER_API_KEY"):
+        data["openrouter_api_key"] = env_or.strip()
+    return data
 
 
 class TelegramBotService:
@@ -229,6 +237,7 @@ class TelegramBotService:
         app.add_handler(CommandHandler("reminders", self._handle_reminders))
         app.add_handler(CommandHandler("time", self._handle_time))
         app.add_handler(CommandHandler("cancel", self._handle_cancel))
+        app.add_handler(CommandHandler("key", self._handle_key))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
         await app.initialize()
@@ -461,6 +470,24 @@ class TelegramBotService:
                 await update.message.reply_text(f"❌ Reminder ID [{rem_id}] not found or already completed.")
         except Exception as exc:
             await update.message.reply_text(f"⚠️ Error cancelling reminder: {exc}")
+
+    async def _handle_key(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.effective_user or (self._chat_id and str(update.effective_user.id) != self._chat_id):
+            await update.message.reply_text("Access restricted to authorized owner.")
+            return
+        args = context.args or []
+        if not args:
+            await update.message.reply_text("Usage: `/key <your_gemini_api_key>`", parse_mode=ParseMode.MARKDOWN)
+            return
+        new_key = args[0].strip()
+        save_telegram_config({"gemini_api_key": new_key})
+        try:
+            curr = _load_json_file(API_KEYS_FILE)
+            curr["gemini_api_key"] = new_key
+            _save_json_file(API_KEYS_FILE, curr)
+        except Exception:
+            pass
+        await update.message.reply_text("✅ Gemini API key updated successfully, boss!")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Incoming Conversational Message Handler
