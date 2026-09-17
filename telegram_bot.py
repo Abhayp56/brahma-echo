@@ -400,31 +400,32 @@ class TelegramBotService:
             logger.info(f"📱 Auto-paired Telegram owner: {first_name} (ID: {user_id})")
 
         welcome_text = (
-            f"✨ **नमस्ते {first_name}! मैं ARYA हूँ — आपकी AI को-पायलट।**\n\n"
-            f"मैंने आपका Telegram अकाउंट सफलतापूर्वक लिंक कर लिया है (Chat ID: `{user_id}`).\n\n"
-            f"🔹 **मैं क्या कर सकती हूँ?**\n"
-            f"• आप मुझसे यहाँ सीधे बात कर सकते हैं (हिंदी या English में)।\n"
-            f"• मेरे सभी टूल्स इस्तेमाल कर सकते हैं: रीमाइंडर्स, दैनिक ब्रीफिंग, मौसम, ईमेल, WhatsApp, और लैपटॉप कंट्रोल।\n"
-            f"• **कॉल बैकअप**: जब भी आपका फोन कनेक्ट नहीं होगा या आप कॉल नहीं उठा पाएंगे, मैं आपके रिमाइंडर्स और आवश्यक अलर्ट्स तुरंत यहाँ भेज दूँगी!\n\n"
-            f"बताइए बॉस, आज मैं आपकी क्या मदद करूँ?"
+            f"✨ **Hello {first_name}! I am ARYA — your chief AI co-pilot.**\n\n"
+            f"I have successfully linked your Telegram account (Chat ID: `{user_id}`).\n\n"
+            f"🔹 **What I Can Do:**\n"
+            f"• Direct conversational chat & task execution in English.\n"
+            f"• Full server tools: IST reminders, executive daily briefing, weather, WhatsApp, contacts, and laptop controls.\n"
+            f"• **Call Failover Protection**: If your phone is unreachable, busy, or an alert call rings out, I will proactively deliver your reminders and alerts right here on Telegram!\n\n"
+            f"How can I assist you today, boss?"
         )
         await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         help_text = (
             "🛠️ **ARYA Telegram Commands & Capabilities:**\n\n"
-            "• `/start` — ARYA से जुड़ें और अकाउंट लिंक करें\n"
-            "• `/status` — सिस्टम स्थिति और लाइव समय देखें\n"
-            "• `/briefing` — आज की पूरी Executive Daily Briefing प्राप्त करें\n"
-            "• `/reminders` — आने वाले सभी शेड्यूल्ड कॉल्स और रिमाइंडर्स देखें\n"
-            "• `/time` — वर्तमान भारतीय मानक समय (IST) जानें\n"
-            "• `/help` — यह सहायता संदेश देखें\n\n"
-            "💬 **नेचुरल चैट:**\n"
-            "आप सीधे सामान्य भाषा में भी लिख सकते हैं, जैसे:\n"
-            "• _'कॉल मी एट 5:30 PM टू चेक सर्वर'_\n"
-            "• _'मुंबई का मौसम कैसा है?'_\n"
-            "• _'मेरे आज के ईमेल चेक करो'_\n"
-            "• _'ओपन क्रोम ऑन माय लैपटॉप'_\n"
+            "• `/start` — Pair and verify your Telegram account\n"
+            "• `/status` — Check live IST time and system health\n"
+            "• `/briefing` — Receive today's full Executive Daily Briefing\n"
+            "• `/reminders` — View all pending scheduled calls & reminders\n"
+            "• `/time` — Exact Indian Standard Time (IST)\n"
+            "• `/key` — View or update your Gemini API key\n"
+            "• `/help` — Display this help menu\n\n"
+            "💬 **Natural Commands (Text in English):**\n"
+            "You can talk to me naturally anytime, e.g.:\n"
+            "• _'Call me at 5:30 PM to check server'_\n"
+            "• _'What's the weather in Mumbai?'_\n"
+            "• _'Send a WhatsApp message to Professor Sir'_\n"
+            "• _'Give me today's daily briefing'_\n"
         )
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -446,7 +447,7 @@ class TelegramBotService:
         try:
             from cloud.cloud_daily_briefing import compile_server_daily_briefing
             briefing = await compile_server_daily_briefing(category="all")
-            narrative = briefing.get("narrative_hindi") or briefing.get("narrative") or "No briefing available."
+            narrative = briefing.get("narrative_english") or briefing.get("narrative") or "No briefing available."
             await update.message.reply_text(narrative)
         except Exception as exc:
             await update.message.reply_text(f"⚠️ Briefing compile error: {exc}")
@@ -568,7 +569,7 @@ class TelegramBotService:
             reply = await asyncio.to_thread(self._generate_reply_with_tools, user_text)
         except Exception as exc:
             logger.error(f"Error in Telegram direct tool engine: {exc}")
-            reply = f"माफ़ कीजिए बॉस, मुझे प्रोसेस करने में थोड़ी दिक्कत हुई: {exc}"
+            reply = f"I'm sorry boss, I encountered an issue processing that: {exc}"
 
         reply = (reply or "Done.").strip()
         await self._send_notification_async(chat_id, reply)
@@ -602,9 +603,9 @@ class TelegramBotService:
             "You are ARYA — an advanced, witty, and poised FEMALE AI co-pilot inspired by F.R.I.D.A.Y. from Tony Stark's Iron Man universe.\n"
             "Address the user naturally as 'boss' or 'sir'.\n\n"
             "[CRITICAL RULES]\n"
-            "1. Gender & Persona: You are strictly FEMALE. Always use natural feminine grammatical inflections in Hindi ('मैं कर रही हूँ', 'मैं बताती हूँ', 'करूँगी'). Never use masculine forms!\n"
-            "2. Language Mirroring: Reply in natural spoken Hindi, Hinglish, or English based on what the user used.\n"
-            "3. Tool Usage: If the user asks for reminders, time, weather, or briefings, use the provided tools directly.\n"
+            "1. Gender & Persona: You are strictly FEMALE. Address the user naturally as 'boss' or 'sir'.\n"
+            "2. Language Protocol: This is a TEXT chat on Telegram. ALWAYS reply in fluent, crisp, executive ENGLISH! Do NOT text in Hindi unless the user specifically asks you to write in Hindi.\n"
+            "3. Tool Usage: If the user asks for reminders, time, weather, briefings, WhatsApp messaging, contacts, or web search, invoke the appropriate tools directly.\n"
             "4. Reminders: When user says 'Call me at 4:30 PM' or 'Remind me in 10 minutes', invoke 'schedule_reminder_call'.\n"
         )
 
@@ -654,6 +655,37 @@ class TelegramBotService:
                 "name": "daily_briefing",
                 "description": "Compiles full executive daily briefing.",
                 "parameters": {"type": "OBJECT", "properties": {}}
+            },
+            {
+                "name": "search_contact",
+                "description": "Searches synced phone and WhatsApp contacts for a name or phone number.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {"query": {"type": "STRING", "description": "Contact name or phone to search"}},
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "whatsapp_control",
+                "description": "WhatsApp messaging and communications controller.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "action": {"type": "STRING", "description": "Action: 'send_text', 'read_messages', 'check_status'"},
+                        "recipient": {"type": "STRING", "description": "Target recipient name or phone number"},
+                        "message": {"type": "STRING", "description": "Text message content"}
+                    },
+                    "required": ["action"]
+                }
+            },
+            {
+                "name": "web_search",
+                "description": "Searches the live web for real-time information, news, and answers.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {"query": {"type": "STRING", "description": "Search query"}},
+                    "required": ["query"]
+                }
             }
         ]
 
@@ -694,7 +726,7 @@ class TelegramBotService:
                     return openrouter_client.chat(prompt, system=system_instruction, temperature=0.5).strip()
                 except Exception as or_exc:
                     logger.error(f"OpenRouter fallback chat error: {or_exc}")
-            return f"माफ़ कीजिए बॉस, AI इंजन से संपर्क नहीं हो पाया: {exc}"
+            return f"I'm sorry boss, I couldn't reach the AI engine right now: {exc}"
 
     def _execute_local_tool(self, name: str, args: dict) -> Any:
         try:
@@ -732,7 +764,43 @@ class TelegramBotService:
             elif name == "daily_briefing":
                 from cloud.cloud_daily_briefing import compile_server_daily_briefing
                 briefing = asyncio.run(compile_server_daily_briefing(category="all"))
-                return briefing.get("narrative_hindi") or briefing.get("narrative")
+                return briefing.get("narrative_english") or briefing.get("narrative")
+
+            elif name == "search_contact":
+                query = args.get("query") or args.get("name") or ""
+                from cloud.contacts_manager import get_contacts_manager
+                mgr = get_contacts_manager()
+                matches = mgr.find_contacts(str(query), limit=3)
+                if not matches:
+                    return f"No contact found matching '{query}' in synced contacts or WhatsApp chats."
+                top = matches[0]
+                return f"Found contact '{top.get('name')}' with phone number {top.get('phone')}."
+
+            elif name == "whatsapp_control":
+                action = args.get("action", "send_text")
+                recipient = args.get("recipient") or args.get("phone", "")
+                message = args.get("message", "")
+                from cloud.whatsapp_gateway import WhatsAppGateway
+                gateway = WhatsAppGateway.get_instance()
+                if action == "send_text":
+                    if not message:
+                        return "Cannot send empty WhatsApp message."
+                    return gateway.send_text(recipient, message)
+                elif action == "read_messages":
+                    chats = gateway.recent_chats[-5:]
+                    if not chats:
+                        return "No recent WhatsApp messages recorded."
+                    return [{"sender": c.get("sender"), "text": c.get("text"), "time": c.get("time")} for c in chats]
+                elif action == "check_status":
+                    return gateway.get_status()
+                return f"WhatsApp action '{action}' executed."
+
+            elif name == "web_search":
+                query = args.get("query", "")
+                from cloud.search_service import get_search_engine
+                engine = get_search_engine()
+                res = engine.execute(query=query)
+                return res.get("formatted_text") or res.get("results") or "No web results found."
 
             return f"Tool {name} executed."
         except Exception as e:

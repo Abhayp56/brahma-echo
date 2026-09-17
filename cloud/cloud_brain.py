@@ -305,7 +305,8 @@ class CloudBrain:
         try:
             self._in_turn = True
             self.log(f"User (Text): {text}")
-            await self.session.send(input=text, end_of_turn=True)
+            formatted_prompt = f"[User (Text Message)]: {text}\n(Instruction: Reply via text in clear, concise English for the boss.)"
+            await self.session.send(input=formatted_prompt, end_of_turn=True)
             if future:
                 try:
                     return await asyncio.wait_for(future, timeout=timeout)
@@ -915,7 +916,7 @@ class CloudBrain:
                                     # Resolve any waiting HTTP or RPC command callers
                                     for fut in list(self._pending_text_futures):
                                         if not fut.done():
-                                            fut.set_result(full_out)
+                                            fut.set_result(full_out or "Command executed, boss.")
 
                                     if self.on_turn_complete and not response.tool_call:
                                         try:

@@ -165,6 +165,37 @@ class TestTelegramBotIntegration(unittest.TestCase):
         self.assertEqual(events_emitted[0]["type"], "call_declined")
         self.assertEqual(events_emitted[0]["data"]["reason"], "Declined call test")
 
+    def test_telegram_command_bridge_cross_thread(self):
+        """Verify cross-thread bridge from Telegram loop to server main_loop without loop errors."""
+        import threading
+
+        # Start a mock main_loop on a server background thread
+        server_loop = asyncio.new_event_loop()
+        server_thread = threading.Thread(target=server_loop.run_forever, daemon=True)
+        server_thread.start()
+
+        class MockBrain:
+            is_running = True
+
+            async def handle_text_command(self, text, wait_for_response=True, timeout=10.0):
+                await asyncio.sleep(0.05)
+                return f"Echo from main_loop: {text}"
+
+        mock_brain = MockBrain()
+
+        # Simulate Telegram thread running its own loop
+        async def run_on_telegram_loop():
+            fut = asyncio.run_coroutine_threadsafe(
+                mock_brain.handle_text_command("Hello ARYA", wait_for_response=True, timeout=10.0),
+                server_loop
+            )
+            return await asyncio.wrap_future(fut)
+
+        telegram_result = asyncio.run(run_on_telegram_loop())
+        server_loop.call_soon_threadsafe(server_loop.stop)
+
+        self.assertEqual(telegram_result, "Echo from main_loop: Hello ARYA")
+
 
 if __name__ == "__main__":
     unittest.main()

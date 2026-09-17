@@ -602,9 +602,21 @@ async def on_startup():
     try:
         from telegram_bot import TelegramBotService, load_telegram_config
         telegram_bot = TelegramBotService.get_instance()
-        telegram_bot.bind_command_handler(
-            lambda txt: brain.handle_text_command(txt, wait_for_response=True, timeout=25.0) if brain else None
-        )
+
+        async def _telegram_command_bridge(user_text: str) -> Optional[str]:
+            if not brain or not brain.is_running:
+                return None
+            try:
+                fut = asyncio.run_coroutine_threadsafe(
+                    brain.handle_text_command(user_text, wait_for_response=True, timeout=25.0),
+                    main_loop
+                )
+                return await asyncio.wrap_future(fut)
+            except Exception as bridge_err:
+                logger.warning(f"Telegram-to-CloudBrain bridge error: {bridge_err}")
+                return None
+
+        telegram_bot.bind_command_handler(_telegram_command_bridge)
         tg_cfg = load_telegram_config()
         if tg_cfg.get("enabled", True) and (tg_cfg.get("bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN")):
             telegram_bot.start()
