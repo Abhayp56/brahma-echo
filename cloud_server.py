@@ -28,6 +28,7 @@ import qrcode
 import uvicorn
 import subprocess
 import shutil
+import threading
 import httpx
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
@@ -678,6 +679,26 @@ _gev_process: Optional[subprocess.Popen] = None
 _gev_http_client: Optional[httpx.AsyncClient] = None
 
 
+_gev_startup_logs: list[str] = []
+
+
+def _stream_gev_logs(proc: subprocess.Popen):
+    """Streams stdout/stderr from GEV Vite process into logger and circular buffer."""
+    try:
+        if proc.stdout:
+            for line in iter(proc.stdout.readline, ""):
+                if not line:
+                    break
+                line_str = line.strip()
+                if line_str:
+                    logger.info(f"[GEV] {line_str}")
+                    _gev_startup_logs.append(line_str)
+                    if len(_gev_startup_logs) > 100:
+                        _gev_startup_logs.pop(0)
+    except Exception as e:
+        logger.debug(f"[GEV] Log stream ended: {e}")
+
+
 def get_gev_http_client() -> httpx.AsyncClient:
     global _gev_http_client
     if _gev_http_client is None or _gev_http_client.is_closed:
@@ -692,7 +713,7 @@ def get_gev_http_client() -> httpx.AsyncClient:
 def find_node_or_npm():
     """Finds node or npm executable across PATH, virtualenv, and system paths."""
     npm = shutil.which("npm") or shutil.which("npm.cmd")
-    node = shutil.which("node") or shutil.which("node.exe")
+    node = shutil.which("node") or shutil.which("node.exe") or shutil.which("nodejs")
     if npm and node:
         return npm, node
 
@@ -706,11 +727,18 @@ def find_node_or_npm():
             npm = str(candidate / "npm.cmd")
         if not node and (candidate / "node").exists():
             node = str(candidate / "node")
+        if not node and (candidate / "nodejs").exists():
+            node = str(candidate / "nodejs")
         if not node and (candidate / "node.exe").exists():
             node = str(candidate / "node.exe")
 
     # Common Linux / Render system locations
-    system_bins = ["/usr/local/bin", "/usr/bin", "/opt/render/project/nodes"]
+    system_bins = [
+        "/usr/local/bin",
+        "/usr/bin",
+        "/opt/render/project/nodes",
+        "/opt/render/project/src/.venv/bin"
+    ]
     for sdir in system_bins:
         sp = Path(sdir)
         if not sp.exists():
@@ -719,12 +747,14 @@ def find_node_or_npm():
             npm = str(sp / "npm")
         if not node and (sp / "node").exists():
             node = str(sp / "node")
+        if not node and (sp / "nodejs").exists():
+            node = str(sp / "nodejs")
 
     return npm, node
 
 
 def start_gev_background_process():
-    """Starts God's Eye View Vite server in background."""
+    """Starts God's Eye View Vite server in background with real-time log streaming."""
     global _gev_process
     gev_dir = BASE_DIR / "gods-eye-view-main"
     if not (gev_dir / "package.json").exists():
@@ -734,32 +764,45 @@ def start_gev_background_process():
     npm_cmd, node_cmd = find_node_or_npm()
     vite_js = gev_dir / "node_modules" / "vite" / "bin" / "vite.js"
 
+    # Self-bootstrap using nodeenv if node was missing at build time
+    if not node_cmd and not npm_cmd:
+        try:
+            logger.info("[GEV] Node not found in system PATH. Attempting on-the-fly nodeenv bootstrap...")
+            subprocess.run([sys.executable, "-m", "nodeenv", "-p", "--node=20.18.0"], check=True, capture_output=True)
+            npm_cmd, node_cmd = find_node_or_npm()
+        except Exception as nerr:
+            logger.warning(f"[GEV] nodeenv bootstrap attempt: {nerr}")
+
     cmd = None
     if node_cmd and vite_js.exists():
-        cmd = [node_cmd, str(vite_js), "--port", str(GEV_PORT), "--host", "127.0.0.1"]
+        cmd = [node_cmd, str(vite_js), "--port", str(GEV_PORT), "--host", "0.0.0.0"]
     elif npm_cmd:
-        cmd = [npm_cmd, "run", "dev", "--", "--port", str(GEV_PORT), "--host", "127.0.0.1"]
+        cmd = [npm_cmd, "run", "dev", "--", "--port", str(GEV_PORT), "--host", "0.0.0.0"]
 
     if not cmd:
-        logger.warning("[GEV] Neither Node nor npm found to launch God's Eye View.")
+        logger.warning(f"[GEV] Neither Node nor npm found to launch God's Eye View (node={node_cmd}, npm={npm_cmd}).")
         return
 
     try:
-        logger.info(f"[GEV] Launching God's Eye View server on port {GEV_PORT} using: {cmd[0]}")
+        logger.info(f"[GEV] Launching God's Eye View on port {GEV_PORT}: {' '.join(cmd)}")
         _gev_process = subprocess.Popen(
             cmd,
             cwd=str(gev_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env={**os.environ, "PUPPETEER_SKIP_DOWNLOAD": "true"}
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env={**os.environ, "PUPPETEER_SKIP_DOWNLOAD": "true", "HOST": "0.0.0.0"}
         )
         logger.info(f"[GEV] God's Eye View server started (PID: {_gev_process.pid})")
+        # Stream logs in background thread
+        threading.Thread(target=_stream_gev_logs, args=(_gev_process,), daemon=True).start()
     except Exception as e:
         logger.warning(f"[GEV] Could not start God's Eye View background process: {e}")
 
 
 async def proxy_to_gev(request: Request, target_path: str):
-    """Proxies HTTP requests to local God's Eye View server on GEV_PORT."""
+    """Proxies HTTP requests to local God's Eye View server on GEV_PORT with fallback."""
     client = get_gev_http_client()
     url = httpx.URL(path=target_path, query=request.url.query.encode("utf-8"))
     req_headers = dict(request.headers)
@@ -783,6 +826,30 @@ async def proxy_to_gev(request: Request, target_path: str):
             background=BackgroundTask(res.aclose)
         )
     except Exception as err:
+        # Fallback probe via localhost
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as fallback_client:
+                fb_url = f"http://localhost:{GEV_PORT}{target_path}"
+                if request.url.query:
+                    fb_url += f"?{request.url.query}"
+                fb_req = fallback_client.build_request(
+                    method=request.method,
+                    url=fb_url,
+                    headers=req_headers,
+                    content=await request.body()
+                )
+                res = await fallback_client.send(fb_req, stream=True)
+                resp_headers = dict(res.headers)
+                resp_headers.pop("content-length", None)
+                return StreamingResponse(
+                    res.aiter_raw(),
+                    status_code=res.status_code,
+                    headers=resp_headers,
+                    background=BackgroundTask(res.aclose)
+                )
+        except Exception:
+            pass
+
         return HTMLResponse(
             f"<h3>Tactical Recon Server Initializing or Offline</h3><p>{err}</p>",
             status_code=502
@@ -818,13 +885,60 @@ async def node_modules_proxy(request: Request, path: str):
 
 @app.api_route("/api/tactical-status", methods=["GET"])
 async def tactical_status():
-    """Checks whether the God's Eye View server is responding on GEV_PORT."""
+    """Checks whether the God's Eye View server is responding on GEV_PORT with rich diagnostics."""
+    global _gev_process
+    npm_found, node_found = find_node_or_npm()
+    gev_dir = BASE_DIR / "gods-eye-view-main"
+    vite_exists = (gev_dir / "node_modules" / "vite" / "bin" / "vite.js").exists()
+
+    # Attempt automatic restart if process is not alive
+    if _gev_process is None or _gev_process.poll() is not None:
+        start_gev_background_process()
+
+    is_running = _gev_process is not None and _gev_process.poll() is None
+    exit_code = _gev_process.poll() if _gev_process is not None else None
+
+    # Probe 127.0.0.1
     client = get_gev_http_client()
     try:
-        res = await client.get("/", timeout=2.0)
-        return JSONResponse({"status": "online", "code": res.status_code, "port": GEV_PORT})
+        res = await client.get("/", timeout=2.5)
+        return JSONResponse({
+            "status": "online",
+            "code": res.status_code,
+            "port": GEV_PORT,
+            "gev_running": is_running,
+            "node_path": node_found,
+            "npm_path": npm_found
+        })
     except Exception as e:
-        return JSONResponse({"status": "offline", "error": str(e), "port": GEV_PORT}, status_code=503)
+        # Probe localhost fallback
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as fallback_client:
+                fallback_res = await fallback_client.get(f"http://localhost:{GEV_PORT}/")
+                return JSONResponse({
+                    "status": "online",
+                    "code": fallback_res.status_code,
+                    "port": GEV_PORT,
+                    "via": "localhost",
+                    "gev_running": is_running,
+                    "node_path": node_found,
+                    "npm_path": npm_found
+                })
+        except Exception:
+            pass
+
+        return JSONResponse({
+            "status": "offline",
+            "error": str(e),
+            "port": GEV_PORT,
+            "node_path": node_found,
+            "npm_path": npm_found,
+            "vite_exists": vite_exists,
+            "gev_process_started": _gev_process is not None,
+            "gev_running": is_running,
+            "exit_code": exit_code,
+            "recent_logs": _gev_startup_logs[-25:] if _gev_startup_logs else []
+        }, status_code=503)
 
 
 # Explicit routes for GEV intelligence feeds (never collides with ARYA's own API routes)
