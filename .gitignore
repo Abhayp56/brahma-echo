@@ -78,6 +78,7 @@ search_results.txt
 homescreen background/node_modules/
 homescreen background/.next/
 homescreen background/out/
+node_modules/
 
 # Android Build & Gradle
 brahma-connect-android/.gradle/

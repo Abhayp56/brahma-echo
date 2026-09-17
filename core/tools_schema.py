@@ -1053,5 +1053,55 @@ TOOL_DECLARATIONS = [
             },
             "required": ["reason"]
         }
+    },
+    {
+        "name": "gods_eye_control",
+        "description": (
+            "Controls the God's Eye View 3D spy-satellite simulator and global tactical reconnaissance console. "
+            "Use this whenever the user asks to view, inspect, or track global flights, military aircraft, satellites (ISS), "
+            "CCTV traffic cameras, earthquakes, active wildfires, maritime ships, or to switch visual sensor styles (thermal FLIR, night vision, surveillance, normal) "
+            "or fly the 3D globe to any city or coordinates."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": (
+                        "Action to execute: "
+                        "'open_globe' (opens the tactical 3D satellite display), "
+                        "'fly_to' (flies the 3D satellite camera to a location, city, landmark, or coordinates), "
+                        "'track_aircraft' (selects and tracks nearest commercial or military aircraft), "
+                        "'cockpit_view' (enters or exits the cockpit of a tracked plane; action values: 'enter', 'exit', 'next'), "
+                        "'set_sensor' (changes sensor optics: 'thermal', 'nvg', 'surveillance', 'normal', 'noir'), "
+                        "'toggle_layer' (turns a data layer on or off: 'flights', 'military', 'satellites', 'earthquakes', 'cctv', 'fires', 'vessels', 'radio'), "
+                        "'track_satellite' (tracks ISS or satellite in orbit), "
+                        "'cctv_view' (selects or switches to public CCTV cameras in the area), "
+                        "'zoom_globe' (zooms out to full planetary Earth view)."
+                    )
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "City name, landmark, airport, target name, or query (e.g., 'Dubai', 'Tokyo', 'London', 'LAX', 'ISS', 'Texas')."
+                },
+                "layer": {
+                    "type": "STRING",
+                    "description": "Layer identifier when toggling: 'flights', 'military', 'satellites', 'earthquakes', 'cctv', 'fires', 'vessels', 'radio'."
+                },
+                "style": {
+                    "type": "STRING",
+                    "description": "Visual sensor style: 'thermal' (Ironbow FLIR), 'nvg' (Night Vision), 'surveillance' (CRT), 'normal', 'noir'."
+                },
+                "cockpit_action": {
+                    "type": "STRING",
+                    "description": "'enter', 'exit', 'next', 'previous' for cockpit flight camera."
+                },
+                "enabled": {
+                    "type": "BOOLEAN",
+                    "description": "True to turn layer on, False to turn layer off (when action is 'toggle_layer')."
+                }
+            },
+            "required": ["action"]
+        }
     }
 ]

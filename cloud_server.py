@@ -26,6 +26,11 @@ from typing import Any, Dict, Optional
 
 import qrcode
 import uvicorn
+import subprocess
+import shutil
+import httpx
+from starlette.background import BackgroundTask
+from starlette.responses import StreamingResponse
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Response
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -487,6 +492,17 @@ def broadcast_phone_status_to_web():
             pass
 
 
+def broadcast_gev_action_to_web(action: str, args: Dict[str, Any]):
+    """Broadcasts God's Eye View tactical commands to all connected Web UI browser clients."""
+    info = {"type": "gev_action", "action": action, "args": args}
+    msg = json.dumps(info)
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(msg))
+        except Exception:
+            pass
+
+
 main_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -587,6 +603,7 @@ async def on_startup():
         on_transcript=broadcast_transcript_to_web,
         on_turn_complete=broadcast_turn_complete_to_web,
         on_log=lambda msg: logger.info(f"[Brain] {msg}"),
+        on_gev_action=broadcast_gev_action_to_web,
     )
     # Start Gemini Live background loop
     asyncio.create_task(brain.run())
@@ -634,6 +651,150 @@ async def on_startup():
         whatsapp_gw.start()
     except Exception as wa_err:
         logger.warning(f"Could not start WhatsApp Gateway: {wa_err}")
+
+    # Start God's Eye View Tactical Reconnaissance server
+    start_gev_background_process()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    global _gev_process, _gev_http_client
+    if _gev_process:
+        try:
+            _gev_process.terminate()
+            logger.info("[GEV] God's Eye View server terminated.")
+        except Exception:
+            pass
+    if _gev_http_client and not _gev_http_client.is_closed:
+        await _gev_http_client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# God's Eye View (Tactical Recon) Background Manager & Reverse Proxy
+# ---------------------------------------------------------------------------
+GEV_PORT = int(os.getenv("GEV_PORT", 4173))
+GEV_INTERNAL_URL = f"http://127.0.0.1:{GEV_PORT}"
+_gev_process: Optional[subprocess.Popen] = None
+_gev_http_client: Optional[httpx.AsyncClient] = None
+
+
+def get_gev_http_client() -> httpx.AsyncClient:
+    global _gev_http_client
+    if _gev_http_client is None or _gev_http_client.is_closed:
+        _gev_http_client = httpx.AsyncClient(
+            base_url=GEV_INTERNAL_URL,
+            timeout=35.0,
+            follow_redirects=True,
+        )
+    return _gev_http_client
+
+
+def start_gev_background_process():
+    """Starts God's Eye View Vite server in background if node/npm is available."""
+    global _gev_process
+    gev_dir = BASE_DIR / "gods-eye-view-main"
+    if not (gev_dir / "package.json").exists():
+        return
+    npm_cmd = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm_cmd:
+        logger.info("[GEV] Node/npm not found in PATH; skipping automatic GEV startup.")
+        return
+    try:
+        logger.info(f"[GEV] Starting God's Eye View server on port {GEV_PORT}...")
+        _gev_process = subprocess.Popen(
+            [npm_cmd, "run", "dev", "--", "--port", str(GEV_PORT), "--host", "127.0.0.1"],
+            cwd=str(gev_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={**os.environ, "PUPPETEER_SKIP_DOWNLOAD": "true"}
+        )
+        logger.info(f"[GEV] God's Eye View server started (PID: {_gev_process.pid})")
+    except Exception as e:
+        logger.warning(f"[GEV] Could not start God's Eye View background process: {e}")
+
+
+async def proxy_to_gev(request: Request, target_path: str):
+    """Proxies HTTP requests to local God's Eye View server on GEV_PORT."""
+    client = get_gev_http_client()
+    url = httpx.URL(path=target_path, query=request.url.query.encode("utf-8"))
+    req_headers = dict(request.headers)
+    req_headers.pop("host", None)
+
+    try:
+        body = await request.body()
+        upstream_req = client.build_request(
+            method=request.method,
+            url=url,
+            headers=req_headers,
+            content=body
+        )
+        res = await client.send(upstream_req, stream=True)
+        resp_headers = dict(res.headers)
+        resp_headers.pop("content-length", None)
+        return StreamingResponse(
+            res.aiter_raw(),
+            status_code=res.status_code,
+            headers=resp_headers,
+            background=BackgroundTask(res.aclose)
+        )
+    except Exception as err:
+        return HTMLResponse(
+            f"<h3>Tactical Recon Server Initializing or Offline</h3><p>{err}</p>",
+            status_code=502
+        )
+
+
+@app.api_route("/tactical", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
+@app.api_route("/tactical/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
+async def tactical_proxy(request: Request, path: str = ""):
+    target = "/" if not path else f"/{path}"
+    return await proxy_to_gev(request, target)
+
+
+@app.api_route("/cesium/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def cesium_proxy(request: Request, path: str):
+    return await proxy_to_gev(request, f"/cesium/{path}")
+
+
+@app.api_route("/@vite/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def vite_proxy(request: Request, path: str):
+    return await proxy_to_gev(request, f"/@vite/{path}")
+
+
+@app.api_route("/src/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def src_proxy(request: Request, path: str):
+    return await proxy_to_gev(request, f"/src/{path}")
+
+
+@app.api_route("/node_modules/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def node_modules_proxy(request: Request, path: str):
+    return await proxy_to_gev(request, f"/node_modules/{path}")
+
+
+GEV_API_ENDPOINTS = {
+    "opensky", "opensky-track", "celestrak", "cctv", "transit", "adsbdb",
+    "adsblol", "ais-live", "terrain", "overpass", "firms", "weather-effects",
+    "regional-brief", "tomtom", "radio", "gbfs", "military-installations"
+}
+
+
+@app.api_route("/api/tactical-status", methods=["GET"])
+async def tactical_status():
+    """Checks whether the God's Eye View server is responding on GEV_PORT."""
+    client = get_gev_http_client()
+    try:
+        res = await client.get("/", timeout=2.0)
+        return JSONResponse({"status": "online", "code": res.status_code, "port": GEV_PORT})
+    except Exception as e:
+        return JSONResponse({"status": "offline", "error": str(e), "port": GEV_PORT}, status_code=503)
+
+
+@app.api_route("/api/{endpoint}/{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def gev_api_proxy(request: Request, endpoint: str, path: str = ""):
+    if endpoint in GEV_API_ENDPOINTS or endpoint.startswith("opensky"):
+        target = f"/api/{endpoint}/{path}" if path else f"/api/{endpoint}"
+        return await proxy_to_gev(request, target)
+    raise HTTPException(status_code=404, detail="API route not found")
 
 
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)

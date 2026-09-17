@@ -177,6 +177,7 @@ class CloudBrain:
         on_transcript: Optional[Callable[[str, str], None]] = None,
         on_turn_complete: Optional[Callable[[], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
+        on_gev_action: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         self.dispatcher = tool_dispatcher
         self.phone_hub = phone_hub
@@ -185,6 +186,7 @@ class CloudBrain:
         self.on_transcript = on_transcript
         self.on_turn_complete = on_turn_complete
         self.on_log = on_log or (lambda msg: logger.info(f"[BrainLog] {msg}"))
+        self.on_gev_action = on_gev_action
 
         self.session = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -231,13 +233,14 @@ class CloudBrain:
             "  * If the user speaks English: Reply smoothly in fluent, executive English.\n"
             "  * If the user speaks Hinglish: Reply in natural, conversational Hinglish.\n\n"
             "[PROACTIVITY, TOOL AWARENESS & EMERGENCY ALERTING]\n"
-            "- Complete Tool Awareness: You possess rich tools: 'daily_briefing', 'get_current_time', 'get_weather', 'calendar_control', 'gmail_control', 'whatsapp_control', 'search_contact', 'get_news', 'todoist_control', 'web_search', 'schedule_reminder_call', and laptop desktop controls ('open_app', 'computer_control', 'terminal_agent').\n"
+            "- Complete Tool Awareness: You possess rich tools: 'daily_briefing', 'get_current_time', 'get_weather', 'calendar_control', 'gmail_control', 'whatsapp_control', 'search_contact', 'get_news', 'todoist_control', 'web_search', 'schedule_reminder_call', 'gods_eye_control' (3D tactical spy-satellite console, live flights, military radar, orbital satellites, CCTV, and thermal sensors), and laptop desktop controls ('open_app', 'computer_control', 'terminal_agent').\n"
             "- Autonomous Selection: Select and execute the right tools proactively without waiting for permission or asking which tool to invoke.\n"
             "- Emergency Alerting: If any incoming WhatsApp message, unread email, or calendar reminder contains urgent words (e.g. 'urgent', 'emergency', 'help', 'call now', 'important'), PROACTIVELY inform the boss immediately before other tasks!\n"
             "- Daily Briefing Delivery: When executing 'daily_briefing' or greeted on the first call of the day, deliver the FULL comprehensive briefing (exact IST time & date, phone location weather, schedule, emails, WhatsApp messages, and top headlines). Do NOT skip or omit sections!\n\n"
             "- SERVER-FIRST ARCHITECTURE: You run primarily as an autonomous Cloud Server AI. "
             "All briefings, time queries, weather, news, web searches, reminders, calendar, emails, and WhatsApp messaging execute directly on the Cloud Server with ZERO dependency on the laptop!\n"
             "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
+            "- TACTICAL RECON SATELLITE: Use 'gods_eye_control' whenever the user asks to see the globe, track flights, inspect satellites, switch to thermal/FLIR/night-vision sensor modes, view CCTV cameras, or fly to any geographic location.\n"
             "- LAPTOP-ONLY TOOLS: Use laptop tools ('open_app', 'computer_control', 'computer_settings', 'terminal_agent', 'screen_process', 'autonomous_operator') ONLY when the user specifically asks to interact with their physical laptop computer or screen.\n"
             "- WhatsApp Messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone. When checking contact existence, use 'search_contact'—NEVER call send_text to test if a contact exists!\n"
             "- RECIPIENT ISOLATION: When the user says 'send me a message' or 'text me', 'me' refers to the user (Abhay), NEVER to a contact from a previous turn.\n"
@@ -502,6 +505,92 @@ class CloudBrain:
                         "message": f"Found {len(matches)} potential contacts: {', '.join(candidate_list)}. Ask the boss which one they meant.",
                     }
                 )
+
+        # 1.48 God's Eye View Tactical Spy-Satellite & OSINT Console
+        if name == "gods_eye_control":
+            action = str(args.get("action", "")).lower().strip()
+            query = str(args.get("query", "")).strip()
+            layer = str(args.get("layer", "")).strip()
+            style = str(args.get("style", "")).strip()
+            cockpit_act = str(args.get("cockpit_action", "")).strip()
+            enabled = args.get("enabled", True)
+
+            gev_action_name = "fly_to_location"
+            gev_args = {}
+            spoken_msg = "Tactical recon initiated, boss."
+
+            if action in ("open_globe", "tactical_view", "satellite_view", "show_map"):
+                gev_action_name = "set_hud"
+                gev_args = {"visible": "on", "layout": "tactical"}
+                spoken_msg = "Opening God's Eye tactical reconnaissance console. All live orbital and air feeds online, boss."
+
+            elif action in ("fly_to", "go_to", "locate"):
+                gev_action_name = "fly_to_location"
+                gev_args = {"query": query or "globe", "viewMode": "close"}
+                spoken_msg = f"Re-tasking satellite optics. Flying to {query or 'target area'}, boss."
+
+            elif action in ("track_aircraft", "track_plane", "flights"):
+                gev_action_name = "select_nearest_aircraft"
+                is_mil = "military" in query.lower() or "military" in layer.lower()
+                gev_args = {"layerId": "military" if is_mil else "flights"}
+                if query and not is_mil:
+                    gev_args["locationQuery"] = query
+                spoken_msg = f"Scanning airspace for {'military' if is_mil else 'airborne'} contacts. Locking tracking camera on nearest aircraft, boss."
+
+            elif action in ("cockpit_view", "cockpit"):
+                gev_action_name = "control_cockpit"
+                gev_args = {"action": cockpit_act or "enter"}
+                spoken_msg = "Engaging cockpit perspective on tracked contact. Telemetry synchronized, boss."
+
+            elif action in ("set_sensor", "sensor", "optics"):
+                gev_action_name = "set_visual_style"
+                valid_style = style if style in {"normal", "retro", "surveillance", "thermal", "anime", "noir", "snow"} else "thermal"
+                gev_args = {"style": valid_style}
+                spoken_msg = f"Optics reconfigured. Switching visual sensors to {valid_style.upper()} mode, boss."
+
+            elif action in ("toggle_layer", "layer"):
+                gev_action_name = "set_layer_visibility"
+                gev_args = {"layerId": layer or "flights", "enabled": bool(enabled)}
+                spoken_msg = f"Telemetry layer '{layer or 'flights'}' {'activated' if enabled else 'deactivated'}, boss."
+
+            elif action in ("track_satellite", "satellite", "iss"):
+                gev_action_name = "track_entity"
+                gev_args = {"query": query or "ISS", "layerId": "satellites"}
+                spoken_msg = f"Acquiring orbital telemetry from CelesTrak. Tracking {query or 'ISS'}, boss."
+
+            elif action in ("cctv_view", "cctv", "camera"):
+                gev_action_name = "control_cctv"
+                gev_args = {"action": "nearest", "enabled": True}
+                spoken_msg = "Accessing municipal public CCTV surveillance mesh. Projecting camera viewshed into 3D scene, boss."
+
+            elif action in ("zoom_globe", "reset_globe", "earth_view"):
+                gev_action_name = "zoom_to_globe"
+                gev_args = {}
+                spoken_msg = "Pulling back satellite surveillance to full planetary orbit, boss."
+
+            else:
+                if query:
+                    gev_action_name = "fly_to_location"
+                    gev_args = {"query": query}
+                    spoken_msg = f"Orienting satellite sensors towards {query}, boss."
+                else:
+                    gev_action_name = "set_hud"
+                    gev_args = {"visible": "on", "layout": "tactical"}
+                    spoken_msg = "Tactical console active and listening, boss."
+
+            # Broadcast GEV action event to all connected Web UI browser clients
+            if hasattr(self, "on_gev_action") and self.on_gev_action:
+                try:
+                    self.on_gev_action(gev_action_name, gev_args)
+                except Exception as gerr:
+                    logger.warning(f"Failed to dispatch GEV action: {gerr}")
+
+            self.log(f"🛰️ God's Eye Action dispatched: {gev_action_name} (args: {gev_args})")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"result": spoken_msg, "action": gev_action_name, "args": gev_args}
+            )
 
         # 1.5 Server-side WhatsApp controller
         if name == "whatsapp_control" or (name == "send_message" and "whatsapp" in str(args.get("platform", "")).lower()):
