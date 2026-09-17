@@ -680,6 +680,8 @@ _gev_http_client: Optional[httpx.AsyncClient] = None
 
 
 _gev_startup_logs: list[str] = []
+_gev_is_installing: bool = False
+_last_gev_start_time: float = 0.0
 
 
 def _stream_gev_logs(proc: subprocess.Popen):
@@ -753,9 +755,9 @@ def find_node_or_npm():
     return npm, node
 
 
-def start_gev_background_process():
-    """Starts God's Eye View Vite server in background with real-time log streaming."""
-    global _gev_process
+def _gev_worker():
+    """Background worker that bootstraps node/npm, installs dependencies if needed, and launches Vite."""
+    global _gev_process, _gev_is_installing
     gev_dir = BASE_DIR / "gods-eye-view-main"
     if not (gev_dir / "package.json").exists():
         logger.info("[GEV] Directory gods-eye-view-main not found.")
@@ -772,6 +774,26 @@ def start_gev_background_process():
             npm_cmd, node_cmd = find_node_or_npm()
         except Exception as nerr:
             logger.warning(f"[GEV] nodeenv bootstrap attempt: {nerr}")
+
+    # If vite is missing from node_modules, run automatic npm install with dev dependencies
+    if not vite_js.exists() and npm_cmd:
+        _gev_is_installing = True
+        logger.info("[GEV] vite not found in node_modules. Installing dependencies via npm install --include=dev...")
+        try:
+            install_env = {**os.environ, "NODE_ENV": "development", "PUPPETEER_SKIP_DOWNLOAD": "true"}
+            res = subprocess.run(
+                [npm_cmd, "install", "--include=dev", "--no-audit"],
+                cwd=str(gev_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=install_env
+            )
+            logger.info(f"[GEV] npm install completed (exit code {res.returncode})")
+        except Exception as err:
+            logger.warning(f"[GEV] npm install error: {err}")
+        finally:
+            _gev_is_installing = False
 
     cmd = None
     if node_cmd and vite_js.exists():
@@ -799,6 +821,18 @@ def start_gev_background_process():
         threading.Thread(target=_stream_gev_logs, args=(_gev_process,), daemon=True).start()
     except Exception as e:
         logger.warning(f"[GEV] Could not start God's Eye View background process: {e}")
+
+
+def start_gev_background_process(force: bool = False):
+    """Starts God's Eye View Vite server in a non-blocking background thread with cooldown."""
+    global _last_gev_start_time
+    now = time.time()
+    if _gev_is_installing:
+        return
+    if not force and (now - _last_gev_start_time) < 20.0:
+        return
+    _last_gev_start_time = now
+    threading.Thread(target=_gev_worker, daemon=True).start()
 
 
 async def proxy_to_gev(request: Request, target_path: str):
@@ -890,6 +924,15 @@ async def tactical_status():
     npm_found, node_found = find_node_or_npm()
     gev_dir = BASE_DIR / "gods-eye-view-main"
     vite_exists = (gev_dir / "node_modules" / "vite" / "bin" / "vite.js").exists()
+
+    if _gev_is_installing:
+        return JSONResponse({
+            "status": "installing",
+            "message": "Installing tactical recon dependencies in background...",
+            "port": GEV_PORT,
+            "node_path": node_found,
+            "npm_path": npm_found
+        }, status_code=503)
 
     # Attempt automatic restart if process is not alive
     if _gev_process is None or _gev_process.poll() is not None:
