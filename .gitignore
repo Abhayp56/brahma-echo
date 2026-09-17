@@ -53,8 +53,9 @@ Thumbs.db
 .vscode/
 
 # Build / packaging artifacts
-build/
-dist/
+/build/
+/dist/
+!gods-eye-view-main/build/
 *.spec
 *.exe
 *.msi
