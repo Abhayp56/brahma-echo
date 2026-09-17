@@ -689,20 +689,65 @@ def get_gev_http_client() -> httpx.AsyncClient:
     return _gev_http_client
 
 
+def find_node_or_npm():
+    """Finds node or npm executable across PATH, virtualenv, and system paths."""
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    node = shutil.which("node") or shutil.which("node.exe")
+    if npm and node:
+        return npm, node
+
+    # Check virtualenv bin directory (where nodeenv installs it on Render / Linux)
+    venv_dir = Path(sys.prefix)
+    for sub in ("bin", "Scripts"):
+        candidate = venv_dir / sub
+        if not npm and (candidate / "npm").exists():
+            npm = str(candidate / "npm")
+        if not npm and (candidate / "npm.cmd").exists():
+            npm = str(candidate / "npm.cmd")
+        if not node and (candidate / "node").exists():
+            node = str(candidate / "node")
+        if not node and (candidate / "node.exe").exists():
+            node = str(candidate / "node.exe")
+
+    # Common Linux / Render system locations
+    system_bins = ["/usr/local/bin", "/usr/bin", "/opt/render/project/nodes"]
+    for sdir in system_bins:
+        sp = Path(sdir)
+        if not sp.exists():
+            continue
+        if not npm and (sp / "npm").exists():
+            npm = str(sp / "npm")
+        if not node and (sp / "node").exists():
+            node = str(sp / "node")
+
+    return npm, node
+
+
 def start_gev_background_process():
-    """Starts God's Eye View Vite server in background if node/npm is available."""
+    """Starts God's Eye View Vite server in background."""
     global _gev_process
     gev_dir = BASE_DIR / "gods-eye-view-main"
     if not (gev_dir / "package.json").exists():
+        logger.info("[GEV] Directory gods-eye-view-main not found.")
         return
-    npm_cmd = shutil.which("npm") or shutil.which("npm.cmd")
-    if not npm_cmd:
-        logger.info("[GEV] Node/npm not found in PATH; skipping automatic GEV startup.")
+
+    npm_cmd, node_cmd = find_node_or_npm()
+    vite_js = gev_dir / "node_modules" / "vite" / "bin" / "vite.js"
+
+    cmd = None
+    if node_cmd and vite_js.exists():
+        cmd = [node_cmd, str(vite_js), "--port", str(GEV_PORT), "--host", "127.0.0.1"]
+    elif npm_cmd:
+        cmd = [npm_cmd, "run", "dev", "--", "--port", str(GEV_PORT), "--host", "127.0.0.1"]
+
+    if not cmd:
+        logger.warning("[GEV] Neither Node nor npm found to launch God's Eye View.")
         return
+
     try:
-        logger.info(f"[GEV] Starting God's Eye View server on port {GEV_PORT}...")
+        logger.info(f"[GEV] Launching God's Eye View server on port {GEV_PORT} using: {cmd[0]}")
         _gev_process = subprocess.Popen(
-            [npm_cmd, "run", "dev", "--", "--port", str(GEV_PORT), "--host", "127.0.0.1"],
+            cmd,
             cwd=str(gev_dir),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -771,13 +816,6 @@ async def node_modules_proxy(request: Request, path: str):
     return await proxy_to_gev(request, f"/node_modules/{path}")
 
 
-GEV_API_ENDPOINTS = {
-    "opensky", "opensky-track", "celestrak", "cctv", "transit", "adsbdb",
-    "adsblol", "ais-live", "terrain", "overpass", "firms", "weather-effects",
-    "regional-brief", "tomtom", "radio", "gbfs", "military-installations"
-}
-
-
 @app.api_route("/api/tactical-status", methods=["GET"])
 async def tactical_status():
     """Checks whether the God's Eye View server is responding on GEV_PORT."""
@@ -789,12 +827,24 @@ async def tactical_status():
         return JSONResponse({"status": "offline", "error": str(e), "port": GEV_PORT}, status_code=503)
 
 
-@app.api_route("/api/{endpoint}/{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
-async def gev_api_proxy(request: Request, endpoint: str, path: str = ""):
-    if endpoint in GEV_API_ENDPOINTS or endpoint.startswith("opensky"):
-        target = f"/api/{endpoint}/{path}" if path else f"/api/{endpoint}"
-        return await proxy_to_gev(request, target)
-    raise HTTPException(status_code=404, detail="API route not found")
+# Explicit routes for GEV intelligence feeds (never collides with ARYA's own API routes)
+@app.api_route("/api/opensky{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/opensky-track{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/celestrak{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/cctv{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/transit{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/adsbdb{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/adsblol{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/ais-live{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/terrain{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/overpass{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/firms{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/weather-effects{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/regional-brief{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/tomtom{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/api/military-installations{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def gev_specific_api_proxy(request: Request, path: str = ""):
+    return await proxy_to_gev(request, request.url.path)
 
 
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)

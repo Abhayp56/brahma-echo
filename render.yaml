@@ -2,7 +2,7 @@ services:
   - type: web
     name: brahma-cloud-brain
     runtime: python
-    buildCommand: pip install -r requirements-cloud.txt && cd gods-eye-view-main && npm install --no-audit
+    buildCommand: pip install -r requirements-cloud.txt && (nodeenv -p --node=20.18.0 || true) && cd gods-eye-view-main && npm install --no-audit
     startCommand: python cloud_server.py
     healthCheckPath: /api/status
     autoDeploy: true
