@@ -7885,6 +7885,12 @@ class MainWindow(QMainWindow):
                     self.on_chat_event({"role": "assistant", "text": reply, "source": source})
                 except Exception:
                     pass
+            if source == "telegram":
+                try:
+                    from telegram_bot import TelegramBotService
+                    TelegramBotService.get_instance().send_notification(reply)
+                except Exception:
+                    pass
             if self._chat_source_queue:
                 self._chat_source_queue.popleft()
         elif hasattr(self, "_result_card") and low.startswith("err:"):
@@ -7895,6 +7901,12 @@ class MainWindow(QMainWindow):
             if self.on_chat_event:
                 try:
                     self.on_chat_event({"role": "system", "text": raw.split(":", 1)[1].strip(), "source": source})
+                except Exception:
+                    pass
+            if source == "telegram":
+                try:
+                    from telegram_bot import TelegramBotService
+                    TelegramBotService.get_instance().send_notification(f"⚠️ {raw.split(':', 1)[1].strip()}")
                 except Exception:
                     pass
             if self._chat_source_queue:
@@ -10736,6 +10748,16 @@ class BrahmaUI:
         self._win.discord_config_changed.connect(self._on_discord_config_changed)
         self._win.on_chat_event = self._on_chat_event
         self._app.aboutToQuit.connect(self._discord_service.stop)
+        try:
+            from telegram_bot import TelegramBotService, load_telegram_config
+            self._telegram_service = TelegramBotService.get_instance()
+            self._telegram_service.bind_app_submitter(self._win.submit_command)
+            self._app.aboutToQuit.connect(self._telegram_service.stop)
+            tg_cfg = load_telegram_config()
+            if tg_cfg.get("enabled", True) and tg_cfg.get("bot_token"):
+                self._telegram_service.start()
+        except Exception as tg_init_err:
+            pass
         self._launcher = FloatingLauncher()
         self._command_bar = CommandBar()
         self._workspace_sidebar = WorkspaceSidebar()
@@ -12235,6 +12257,16 @@ class BrahmaUI:
         self._win.discord_config_changed.connect(self._on_discord_config_changed)
         self._win.on_chat_event = self._on_chat_event
         self._app.aboutToQuit.connect(self._discord_service.stop)
+        try:
+            from telegram_bot import TelegramBotService, load_telegram_config
+            self._telegram_service = TelegramBotService.get_instance()
+            self._telegram_service.bind_app_submitter(self._win.submit_command)
+            self._app.aboutToQuit.connect(self._telegram_service.stop)
+            tg_cfg = load_telegram_config()
+            if tg_cfg.get("enabled", True) and tg_cfg.get("bot_token"):
+                self._telegram_service.start()
+        except Exception as tg_init_err:
+            pass
         self._launcher = FloatingLauncher()
         self._command_bar = CommandBar()
         self._workspace_sidebar = WorkspaceSidebar()

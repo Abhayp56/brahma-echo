@@ -21,6 +21,7 @@ COPY core/ ./core/
 COPY memory/ ./memory/
 COPY config/ ./config/
 COPY cloud_server.py .
+COPY telegram_bot.py .
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1

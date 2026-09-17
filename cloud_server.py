@@ -194,6 +194,7 @@ class CloudPhoneHub:
         from cloud.cloud_daily_briefing import load_phone_location
         self.phone_location: Dict[str, Any] = load_phone_location()
         self.last_first_call_date_ist: str = self._load_last_first_call_date()
+        self.call_event_handlers: List[Callable[[str, Dict[str, Any]], Any]] = []
 
     def _load_last_first_call_date(self) -> str:
         date_file = BASE_DIR / "config" / "last_first_call_date.txt"
@@ -325,6 +326,42 @@ class CloudPhoneHub:
         except Exception as exc:
             logger.error(f"Failed to send call_offer: {exc}")
             return {"success": False, "error": str(exc)}
+
+    def register_call_event_handler(self, handler: Callable[[str, Dict[str, Any]], Any]):
+        """Registers a callback for phone call events ('call_unanswered', 'call_declined')."""
+        self.call_event_handlers.append(handler)
+
+    def _emit_call_event(self, event_type: str, call_data: Dict[str, Any]):
+        for handler in list(self.call_event_handlers):
+            try:
+                res = handler(event_type, call_data)
+                if asyncio.iscoroutine(res):
+                    asyncio.create_task(res)
+            except Exception as e:
+                logger.error(f"Error in call event handler: {e}")
+
+    async def check_ringing_timeouts(self):
+        """Monitors active ringing calls. If a call rings > 35s without being answered, triggers timeout & alert."""
+        now = time.time()
+        for call_id, call_info in list(self.active_calls.items()):
+            if call_info.get("status") == "ringing":
+                started = call_info.get("started_at", now)
+                if now - started > 35.0:
+                    logger.warning(f"📞 Android call {call_id} timed out without answer after {int(now - started)}s.")
+                    self.active_calls.pop(call_id, None)
+                    if self.is_connected:
+                        try:
+                            msg = {
+                                "type": "call_end",
+                                "request_id": new_request_id(),
+                                "timestamp": now_iso(),
+                                "payload": {"call_id": call_id, "reason": "timeout"},
+                            }
+                            await self.phone_ws.send_text(json.dumps(msg))
+                        except Exception:
+                            pass
+                    self._emit_call_event("call_unanswered", call_info)
+                    broadcast_phone_status_to_web()
 
     async def end_call(self, call_id: Optional[str] = None) -> Dict[str, Any]:
         target_id = call_id
@@ -483,6 +520,60 @@ def broadcast_whatsapp_event(event_type: str, payload: Any):
                 asyncio.create_task(coro)
 
 
+def on_phone_call_event(event_type: str, call_data: Dict[str, Any]):
+    """Handles phone call status changes (unanswered, declined) for Telegram alert failover."""
+    reason = call_data.get("reason", "Voice call from ARYA")
+    from cloud.cloud_daily_briefing import get_now_ist
+    time_str = get_now_ist().strftime("%I:%M %p IST")
+
+    try:
+        from telegram_bot import TelegramBotService
+        tg = TelegramBotService.get_instance()
+        if not tg.is_running() and not tg.chat_id:
+            return
+
+        if event_type == "call_unanswered":
+            msg = (
+                f"📞 **Missed Call from ARYA**\n\n"
+                f"Boss, I placed a voice call to your phone at {time_str}, but you didn't receive the call.\n\n"
+                f"📌 **Call Purpose / Reminder**:\n_{reason}_\n\n"
+                f"💬 _You can chat with me here anytime or use my tools!_"
+            )
+            tg.send_notification(msg)
+        elif event_type == "call_declined":
+            msg = (
+                f"📞 **Call Declined Alert**\n\n"
+                f"Boss, you declined my call at {time_str}.\n\n"
+                f"📌 **Topic was**:\n_{reason}_\n\n"
+                f"I have sent this note here so you don't miss anything."
+            )
+            tg.send_notification(msg)
+    except Exception as ex:
+        logger.error(f"Error sending Telegram call failover alert: {ex}")
+
+
+def on_scheduler_failover(event_type: str, reminder: Dict[str, Any], details: str):
+    """Handles scheduler failover (phone offline or busy) for Telegram alert failover."""
+    reason = reminder.get("reason", "Scheduled reminder")
+    target_time = reminder.get("target_time_display", "Now")
+
+    try:
+        from telegram_bot import TelegramBotService
+        tg = TelegramBotService.get_instance()
+        if not tg.is_running() and not tg.chat_id:
+            return
+
+        msg = (
+            f"⏰ **Scheduled Reminder (Call Fallback)**\n\n"
+            f"Boss, your scheduled reminder is due ({target_time}), but I couldn't reach your phone ({details}).\n\n"
+            f"📌 **Reminder**: *{reason}*\n\n"
+            f"💬 _Text me here if you'd like me to reschedule or help with anything!_"
+        )
+        tg.send_notification(msg)
+    except Exception as ex:
+        logger.error(f"Error sending Telegram scheduler failover alert: {ex}")
+
+
 @app.on_event("startup")
 async def on_startup():
     global brain, main_loop
@@ -502,6 +593,26 @@ async def on_startup():
 
     # Start Cloud Scheduler 24/7 background loop
     asyncio.create_task(scheduler.start_loop(phone_hub, brain))
+
+    # Register failover and call status callbacks
+    scheduler.register_failover_handler(on_scheduler_failover)
+    phone_hub.register_call_event_handler(on_phone_call_event)
+
+    # Start Telegram Bot Service
+    try:
+        from telegram_bot import TelegramBotService, load_telegram_config
+        telegram_bot = TelegramBotService.get_instance()
+        telegram_bot.bind_command_handler(
+            lambda txt: brain.handle_text_command(txt, wait_for_response=True, timeout=25.0) if brain else None
+        )
+        tg_cfg = load_telegram_config()
+        if tg_cfg.get("enabled", True) and (tg_cfg.get("bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN")):
+            telegram_bot.start()
+            logger.info("🤖 Telegram Bot Service started on cloud server.")
+        else:
+            logger.info("ℹ️ Telegram Bot token not configured yet. Configure via config/telegram_config.json or POST /api/telegram/config.")
+    except Exception as tg_err:
+        logger.warning(f"Could not start Telegram Bot Service: {tg_err}")
 
     # Start WhatsApp Gateway
     try:
@@ -689,6 +800,61 @@ async def disconnect_whatsapp():
     """Disconnects or resets the WhatsApp companion session."""
     from cloud.whatsapp_gateway import WhatsAppGateway
     return WhatsAppGateway.get_instance().disconnect()
+
+
+# =========================================================================
+# Telegram Bot REST Endpoints
+# =========================================================================
+
+@app.get("/api/telegram/status")
+async def get_telegram_status():
+    """Returns the online, pairing, and username status of the Telegram Bot."""
+    from telegram_bot import TelegramBotService, load_telegram_config
+    tg = TelegramBotService.get_instance()
+    cfg = load_telegram_config()
+    return {
+        "running": tg.is_running(),
+        "bot_username": tg.bot_username,
+        "chat_id": tg.chat_id,
+        "has_token": bool(tg.bot_token),
+        "owner_name": cfg.get("owner_name", ""),
+    }
+
+
+@app.post("/api/telegram/config")
+async def save_telegram_configuration(data: Dict[str, Any]):
+    """Configures bot token and enabled state, auto-(re)starting if valid token is provided."""
+    from telegram_bot import TelegramBotService, save_telegram_config
+    bot_token = (data.get("bot_token") or "").strip()
+    chat_id = str(data.get("chat_id") or "").strip()
+    enabled = bool(data.get("enabled", True))
+    updates: Dict[str, Any] = {"enabled": enabled}
+    if bot_token:
+        updates["bot_token"] = bot_token
+    if chat_id:
+        updates["chat_id"] = chat_id
+    save_telegram_config(updates)
+
+    tg = TelegramBotService.get_instance()
+    if enabled and (bot_token or tg.bot_token):
+        tg.stop()
+        tg.start(bot_token or tg.bot_token)
+    elif not enabled:
+        tg.stop()
+    return {"status": "success", "running": tg.is_running(), "chat_id": tg.chat_id}
+
+
+@app.post("/api/telegram/send")
+async def send_telegram_notification_api(data: Dict[str, Any]):
+    """Sends a direct message or reminder notification to the user via Telegram."""
+    message = (data.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Missing 'message' parameter.")
+    from telegram_bot import TelegramBotService
+    tg = TelegramBotService.get_instance()
+    chat_id = data.get("chat_id")
+    success = tg.send_notification(message, chat_id=chat_id)
+    return {"status": "success" if success else "failed", "sent": success}
 
 
 # =========================================================================
@@ -1068,8 +1234,12 @@ async def websocket_phone_companion(websocket: WebSocket):
             # 5. Call Rejected
             elif msg_type == "call_reject":
                 call_id = payload.get("call_id")
-                phone_hub.active_calls.pop(call_id, None)
+                call_info = phone_hub.active_calls.pop(call_id, None) or {
+                    "call_id": call_id,
+                    "reason": payload.get("reason", "Voice call"),
+                }
                 logger.info(f"📞 Android call {call_id} was DECLINED by user.")
+                phone_hub._emit_call_event("call_declined", call_info)
                 broadcast_phone_status_to_web()
 
             # 6. Call Ended

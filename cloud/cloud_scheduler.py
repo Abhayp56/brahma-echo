@@ -16,7 +16,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("CloudScheduler")
@@ -54,6 +54,20 @@ class CloudScheduler:
         self._ensure_storage()
         self._is_running = False
         self._task: Optional[asyncio.Task] = None
+        self._failover_handlers: List[Callable[[str, Dict[str, Any], str], Any]] = []
+
+    def register_failover_handler(self, handler: Callable[[str, Dict[str, Any], str], Any]):
+        """Registers a failover callback for reminder delivery (e.g. Telegram alert)."""
+        self._failover_handlers.append(handler)
+
+    def _notify_failover(self, event_type: str, reminder: Dict[str, Any], details: str = ""):
+        for handler in list(self._failover_handlers):
+            try:
+                res = handler(event_type, reminder, details)
+                if asyncio.iscoroutine(res):
+                    asyncio.create_task(res)
+            except Exception as e:
+                logger.error(f"Error in scheduler failover handler: {e}")
 
     def _ensure_storage(self):
         os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
@@ -257,13 +271,22 @@ class CloudScheduler:
                             )
                             if call_res.get("success"):
                                 r["status"] = "completed"
+                                r["call_id"] = call_res.get("call_id")
                                 r["completed_at_ist"] = get_now_ist().strftime("%Y-%m-%d %H:%M:%S IST")
                                 logger.info(f"✅ Proactive call successfully initiated for reminder [{reminder_id}]")
                             else:
                                 r["status"] = "missed_phone_busy"
-                                logger.warning(f"⚠️ Phone busy for reminder [{reminder_id}]: {call_res.get('error')}")
+                                err_msg = call_res.get('error', 'Phone busy')
+                                logger.warning(f"⚠️ Phone busy for reminder [{reminder_id}]: {err_msg}")
+                                self._notify_failover("call_failed", r, f"Call could not be placed: {err_msg}")
                         else:
                             overdue_seconds = now_ts - r.get("target_timestamp", 0)
+                            if not r.get("failover_sent"):
+                                r["failover_sent"] = True
+                                changed = True
+                                logger.info(f"📱 Phone offline for reminder [{reminder_id}]. Dispatching failover notification...")
+                                self._notify_failover("phone_disconnected", r, "Phone companion app is offline / disconnected.")
+
                             if overdue_seconds > 180:
                                 r["status"] = "missed_disconnected"
                                 logger.warning(f"⚠️ Phone disconnected for >3 mins. Marked reminder [{reminder_id}] as missed.")
@@ -276,6 +299,9 @@ class CloudScheduler:
 
                 if changed:
                     self._save_reminders(reminders)
+
+                if phone_hub and hasattr(phone_hub, "check_ringing_timeouts"):
+                    await phone_hub.check_ringing_timeouts()
 
             except asyncio.CancelledError:
                 break
