@@ -190,161 +190,6 @@
       box-shadow: 0 0 8px #00ff88;
     }
 
-    .tactical-btn {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(0, 240, 255, 0.08);
-      border: 1px solid rgba(0, 240, 255, 0.25);
-      color: #00f0ff;
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      backdrop-filter: blur(12px);
-      transition: all 0.25s ease;
-    }
-
-    .tactical-btn:hover {
-      background: rgba(0, 240, 255, 0.18);
-      border-color: #00f0ff;
-      box-shadow: 0 0 14px rgba(0, 240, 255, 0.4);
-      transform: translateY(-1px);
-    }
-
-    .tactical-status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #777;
-      display: inline-block;
-      transition: 0.3s;
-    }
-
-    .tactical-status-dot.online {
-      background: #00f0ff;
-      box-shadow: 0 0 8px #00f0ff;
-    }
-
-    .tactical-modal-card {
-      max-width: 95vw;
-      width: 1440px;
-      height: 90vh;
-      max-height: 94vh;
-      background: #06090e;
-      border: 1px solid rgba(0, 240, 255, 0.3);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 240, 255, 0.15);
-      padding: 0;
-    }
-
-    .tactical-quickbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 20px;
-      background: rgba(2, 6, 12, 0.9);
-      border-bottom: 1px solid rgba(0, 240, 255, 0.15);
-    }
-
-    .quickbar-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .quickbar-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #798e9c;
-      font-weight: 600;
-      margin-right: 2px;
-    }
-
-    .tactical-chip {
-      background: rgba(0, 240, 255, 0.08);
-      border: 1px solid rgba(0, 240, 255, 0.22);
-      color: #b0e8f0;
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: 'Outfit', sans-serif;
-    }
-
-    .tactical-chip:hover {
-      background: rgba(0, 240, 255, 0.22);
-      border-color: #00f0ff;
-      color: #fff;
-      transform: translateY(-1px);
-      box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
-    }
-
-    .tactical-action-chip {
-      background: rgba(255, 179, 0, 0.1);
-      border: 1px solid rgba(255, 179, 0, 0.3);
-      color: #ffb300;
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .tactical-action-chip:hover {
-      background: rgba(255, 179, 0, 0.25);
-      color: #fff;
-    }
-
-    .tactical-iframe-container {
-      flex: 1;
-      width: 100%;
-      height: calc(100% - 110px);
-      position: relative;
-      background: #000;
-      overflow: hidden;
-      border-bottom-left-radius: 20px;
-      border-bottom-right-radius: 20px;
-    }
-
-    .tactical-iframe-container iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: block;
-    }
-
-    .tactical-offline-banner {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      background: rgba(5, 7, 10, 0.95);
-      color: #b0bec5;
-      text-align: center;
-      padding: 24px;
-      z-index: 10;
-    }
-
-    .tactical-offline-banner code {
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid rgba(0, 240, 255, 0.3);
-      color: #00f0ff;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      margin: 6px 0;
-      display: inline-block;
-    }
-
     .device-status {
       display: flex;
       align-items: center;
@@ -844,9 +689,6 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="tactical-btn" id="openTacticalBtn" onclick="toggleTacticalModal()" title="God's Eye View — 3D Satellite & OSINT Tactical Recon">
-        🌐 Tactical Recon <span class="tactical-status-dot" id="tacticalNavDot"></span>
-      </button>
       <button class="phone-btn" id="openPhoneBtn" onclick="openPhoneModal()" title="Direct Cloud Phone Companion & VoIP (No Laptop Required)">
         📞 Phone <span class="phone-status-dot" id="phoneNavDot"></span>
       </button>
@@ -1119,54 +961,6 @@
             </button>
           </div>
           <div id="callFeedback" style="font-size: 12px; color: var(--accent); margin-top: 8px; text-align: center; display: none;"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tactical Recon (God's Eye View) Modal -->
-  <div class="modal-overlay" id="tacticalModal">
-    <div class="modal-card tactical-modal-card">
-      <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <h2>🌐 GOD'S EYE VIEW — Tactical Reconnaissance</h2>
-          <span class="modal-badge online" id="tacticalModalBadge">Connecting...</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button class="tactical-action-chip" onclick="openGevInNewTab()" title="Open God's Eye View in standalone browser tab">↗ Standalone</button>
-          <button class="modal-close" id="closeTacticalBtn" onclick="closeTacticalModal()">&times;</button>
-        </div>
-      </div>
-      <div class="tactical-quickbar">
-        <div class="quickbar-group">
-          <span class="quickbar-title">🛰️ Recon Target:</span>
-          <button class="tactical-chip" onclick="sendGevCommand('fly_to_location', { location: 'Tokyo' })">Tokyo</button>
-          <button class="tactical-chip" onclick="sendGevCommand('fly_to_location', { location: 'New York' })">New York</button>
-          <button class="tactical-chip" onclick="sendGevCommand('fly_to_location', { location: 'London' })">London</button>
-          <button class="tactical-chip" onclick="sendGevCommand('fly_to_location', { location: 'Dubai' })">Dubai</button>
-          <button class="tactical-chip" onclick="sendGevCommand('fly_to_location', { location: 'New Delhi' })">New Delhi</button>
-          <button class="tactical-chip" onclick="sendGevCommand('zoom_to_globe', {})">Reset Globe</button>
-        </div>
-        <div class="quickbar-group">
-          <span class="quickbar-title">👁️ Sensors:</span>
-          <button class="tactical-chip" onclick="sendGevCommand('set_visual_style', { style: 'thermal' })">🔥 Thermal FLIR</button>
-          <button class="tactical-chip" onclick="sendGevCommand('set_visual_style', { style: 'nvg' })">🟢 Night Vision</button>
-          <button class="tactical-chip" onclick="sendGevCommand('set_visual_style', { style: 'surveillance' })">📡 CRT Scan</button>
-          <button class="tactical-chip" onclick="sendGevCommand('set_visual_style', { style: 'normal' })">☀️ Normal</button>
-        </div>
-        <div class="quickbar-group">
-          <span class="quickbar-title">✈️ Tracking:</span>
-          <button class="tactical-chip" onclick="sendGevCommand('select_nearest_aircraft', {})">Track Nearest Aircraft</button>
-          <button class="tactical-chip" onclick="sendGevCommand('control_cockpit', { action: 'enter' })">Cockpit View</button>
-          <button class="tactical-chip" onclick="sendGevCommand('control_cockpit', { action: 'exit' })">Orbit View</button>
-        </div>
-      </div>
-      <div class="tactical-iframe-container">
-        <iframe id="gevIframe" src="/tactical" allow="geolocation; microphone; camera; fullscreen" loading="lazy"></iframe>
-        <div class="tactical-offline-banner" id="gevOfflineBanner" style="display: none;">
-          <h3>⚠️ God's Eye View Server Initializing</h3>
-          <p>Tactical Recon 3D satellite engine is starting up. Please wait a few moments...</p>
-          <button class="tactical-chip" onclick="retryGevIframe()">🔄 Refresh Viewport</button>
         </div>
       </div>
     </div>
@@ -1464,9 +1258,6 @@
             renderWhatsAppQR(msg.data.qr_data_url);
           } else if (msg.type === 'whatsapp_message') {
             onWhatsAppMessageReceived(msg.data);
-          } else if (msg.type === 'gev_action') {
-            forwardGevActionToIframe(msg.action, msg.args);
-            appendMsg('sys', `🛰️ Tactical Recon: ${msg.action} ${msg.args ? JSON.stringify(msg.args) : ''}`);
           }
         } catch (e) {
           console.error(e);
@@ -2199,111 +1990,7 @@
     // Periodic Phone status check
     setInterval(checkPhoneStatus, 4000);
     checkPhoneStatus();
-
-    // 8. God's Eye View Tactical Recon Integration
-    const tacticalModal = document.getElementById('tacticalModal');
-    const tacticalNavDot = document.getElementById('tacticalNavDot');
-    const tacticalModalBadge = document.getElementById('tacticalModalBadge');
-    const gevIframe = document.getElementById('gevIframe');
-    const gevOfflineBanner = document.getElementById('gevOfflineBanner');
-    let GEV_URL = '/tactical';
-
-    window.openTacticalModal = function() {
-      if (tacticalModal) {
-        tacticalModal.classList.add('active');
-        tacticalModal.classList.add('open');
-        tacticalModal.style.display = 'flex';
-        checkGevStatus();
-      }
-    };
-
-    window.closeTacticalModal = function() {
-      if (tacticalModal) {
-        tacticalModal.classList.remove('active');
-        tacticalModal.classList.remove('open');
-        tacticalModal.style.display = 'none';
-      }
-    };
-
-    window.toggleTacticalModal = function() {
-      if (tacticalModal && (tacticalModal.classList.contains('active') || tacticalModal.style.display === 'flex')) {
-        window.closeTacticalModal();
-      } else {
-        window.openTacticalModal();
-      }
-    };
-
-    window.openGevInNewTab = function() {
-      window.open(GEV_URL, '_blank');
-    };
-
-    window.sendGevCommand = function(action, args) {
-      forwardGevActionToIframe(action, args);
-      appendMsg('user', `Tactical command: ${action}`);
-    };
-
-    function forwardGevActionToIframe(action, args) {
-      window.openTacticalModal();
-      try {
-        if (gevIframe && gevIframe.contentWindow) {
-          gevIframe.contentWindow.postMessage({
-            type: 'gev_action',
-            action: action,
-            args: args || {}
-          }, '*');
-        }
-      } catch (err) {
-        console.warn('Could not postMessage to GEV iframe:', err);
-      }
-    }
-
-    async function checkGevStatus() {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch('/api/tactical-status', { signal: controller.signal });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-        if (data.status === 'online') {
-          if (data.url && GEV_URL !== data.url) {
-            GEV_URL = data.url;
-            if (gevIframe) gevIframe.src = GEV_URL;
-          }
-          if (tacticalNavDot) tacticalNavDot.className = 'tactical-status-dot online';
-          if (tacticalModalBadge) {
-            tacticalModalBadge.className = 'modal-badge online';
-            tacticalModalBadge.textContent = data.mode === 'remote_service' ? 'ONLINE (DEDICATED RECON)' : 'ONLINE (3D RECON)';
-          }
-          if (gevOfflineBanner) gevOfflineBanner.style.display = 'none';
-        } else {
-          throw new Error('Offline');
-        }
-      } catch (e) {
-        if (tacticalNavDot) tacticalNavDot.className = 'tactical-status-dot';
-        if (tacticalModalBadge) {
-          tacticalModalBadge.className = 'modal-badge offline';
-          tacticalModalBadge.textContent = 'INITIALIZING...';
-        }
-        if (gevOfflineBanner) gevOfflineBanner.style.display = 'flex';
-      }
-    }
-
-    window.retryGevIframe = function() {
-      if (gevIframe) {
-        gevIframe.src = GEV_URL;
-      }
-      checkGevStatus();
-    };
-
-    if (tacticalModal) {
-      tacticalModal.addEventListener('click', (e) => {
-        if (e.target === tacticalModal) window.closeTacticalModal();
-      });
-    }
-
-    // Check status periodically
-    setInterval(checkGevStatus, 8000);
-    checkGevStatus();
   </script>
 </body>
 </html>
+
