@@ -76,7 +76,7 @@ class VoiceCallSpeechEngine(
             } catch (e: Exception) {
                 Log.w(TAG, "Error pausing SpeechRecognizer: ${e.message}")
             }
-            Log.d(TAG, "SpeechRecognizer paused (ARYA is speaking).")
+            Log.d(TAG, "SpeechRecognizer paused (JARVIS is speaking).")
         }
     }
 

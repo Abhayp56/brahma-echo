@@ -202,7 +202,7 @@ def _load_system_prompt() -> str:
         
     try:
         from core.identity import identity
-        ast_name = identity.get_assistant_name() or "ARYA"
+        ast_name = identity.get_assistant_name() or "JARVIS"
         own_name = identity.get_owner_name() or "the user"
         role = identity.get_owner_role()
         mode = identity.get_behavior_mode()
@@ -214,6 +214,12 @@ def _load_system_prompt() -> str:
             identity_str += ".\n"
             
         identity_str += f"Your current behavior mode is: {mode}.\n"
+        humor = identity.get_humor_level() if hasattr(identity, "get_humor_level") else 70
+        gender = identity.get_assistant_gender() if hasattr(identity, "get_assistant_gender") else "male"
+        voice = identity.get_assistant_voice() if hasattr(identity, "get_assistant_voice") else "Charon"
+        identity_str += f"Persona Gender: {gender.upper()}.\n"
+        identity_str += f"Voice Profile: {voice}.\n"
+        identity_str += f"Humor Setting: {humor}% (witty, sarcastic banter, refined British-style dry humor).\n"
         
         custom = identity.get_custom_instructions()
         if custom:
@@ -2653,7 +2659,7 @@ class BrahmaLive:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Aoede"
+                        voice_name=identity.get_assistant_voice() if hasattr(identity, "get_assistant_voice") else "Charon"
                     )
                 )
             ),

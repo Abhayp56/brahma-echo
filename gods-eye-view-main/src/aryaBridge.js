@@ -66,3 +66,5 @@ export function initAryaBridge() {
   // Notify parent window that the bridge is mounted and listening
   window.parent?.postMessage({ type: 'gev_bridge_mounted', timestamp: Date.now() }, '*');
 }
+
+export const initJarvisBridge = initAryaBridge;

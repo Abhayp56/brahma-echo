@@ -400,7 +400,7 @@ class TelegramBotService:
             logger.info(f"📱 Auto-paired Telegram owner: {first_name} (ID: {user_id})")
 
         welcome_text = (
-            f"✨ **Hello {first_name}! I am ARYA — your chief AI co-pilot.**\n\n"
+            f"✨ **Hello {first_name}! I am JARVIS — your chief AI co-pilot.**\n\n"
             f"I have successfully linked your Telegram account (Chat ID: `{user_id}`).\n\n"
             f"🔹 **What I Can Do:**\n"
             f"• Direct conversational chat & task execution in English.\n"
@@ -412,7 +412,7 @@ class TelegramBotService:
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         help_text = (
-            "🛠️ **ARYA Telegram Commands & Capabilities:**\n\n"
+            "🛠️ **JARVIS Telegram Commands & Capabilities:**\n\n"
             "• `/start` — Pair and verify your Telegram account\n"
             "• `/status` — Check live IST time and system health\n"
             "• `/briefing` — Receive today's full Executive Daily Briefing\n"
@@ -434,9 +434,9 @@ class TelegramBotService:
         now_ist = get_now_ist()
         time_str = now_ist.strftime("%A, %B %d, %Y at %I:%M:%S %p IST")
         status_text = (
-            f"🟢 **ARYA Cloud Co-Pilot Status**\n\n"
+            f"🟢 **JARVIS Cloud Co-Pilot Status**\n\n"
             f"🕒 **Current IST**: {time_str}\n"
-            f"🤖 **Bot User**: @{self._bot_username or 'arya_bot'}\n"
+            f"🤖 **Bot User**: @{self._bot_username or 'jarvis_bot'}\n"
             f"👤 **Linked Owner ID**: `{self._chat_id or 'Not linked'}`\n"
             f"⚡ **Live Engine**: Online & Ready\n"
         )
@@ -600,10 +600,10 @@ class TelegramBotService:
 
         system_instruction = (
             f"{time_ctx}"
-            "You are ARYA — an advanced, witty, and poised FEMALE AI co-pilot inspired by F.R.I.D.A.Y. from Tony Stark's Iron Man universe.\n"
-            "Address the user naturally as 'boss' or 'sir'.\n\n"
+            "You are JARVIS — an ultra-advanced, witty, and poised MALE AI co-pilot inspired by J.A.R.V.I.S. from Tony Stark's Iron Man universe.\n"
+            "Address the user naturally as 'boss' or 'sir'. Your humor level is calibrated to 70% (sharp British-style dry wit, subtle sarcasm, highly loyal and competent).\n\n"
             "[CRITICAL RULES]\n"
-            "1. Gender & Persona: You are strictly FEMALE. Address the user naturally as 'boss' or 'sir'.\n"
+            "1. Gender & Persona: You are strictly MALE. Address the user naturally as 'boss' or 'sir'. Season responses with subtle, witty banter and understated sarcasm while executing commands with flawless precision.\n"
             "2. Language Protocol: This is a TEXT chat on Telegram. ALWAYS reply in fluent, crisp, executive ENGLISH! Do NOT text in Hindi unless the user specifically asks you to write in Hindi.\n"
             "3. Tool Usage: If the user asks for reminders, time, weather, briefings, WhatsApp messaging, contacts, or web search, invoke the appropriate tools directly.\n"
             "4. Reminders: When user says 'Call me at 4:30 PM' or 'Remind me in 10 minutes', invoke 'schedule_reminder_call'.\n"

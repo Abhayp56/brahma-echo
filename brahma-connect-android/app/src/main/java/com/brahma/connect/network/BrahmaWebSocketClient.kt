@@ -133,7 +133,7 @@ class BrahmaWebSocketClient(
             if (cred != null && (cred.gatewayHost.isNotBlank() || cred.gatewayUrl.isNotBlank())) {
                 val isCloud = cred.ssl || cred.gatewayUrl.contains("onrender.com")
                 GatewayEndpoint(
-                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    name = if (isCloud) "JARVIS Cloud AI" else "Brahma PC",
                     host = cred.gatewayHost,
                     port = cred.gatewayPort,
                     ssl = cred.ssl,
@@ -324,7 +324,7 @@ class BrahmaWebSocketClient(
                         val payload = root.optJSONObject("payload") ?: return
                         val offer = com.brahma.connect.core.CallOfferPayload(
                             callId = payload.optString("call_id", root.optString("request_id")),
-                            callerName = payload.optString("caller_name", "ARYA"),
+                            callerName = payload.optString("caller_name", "JARVIS"),
                             reason = payload.optString("reason", "Voice Call"),
                             timestamp = payload.optLong("timestamp", System.currentTimeMillis())
                         )
@@ -396,7 +396,7 @@ class BrahmaWebSocketClient(
                     if (contacts.isNotEmpty()) {
                         send(BrahmaProtocol.contactsSync(contacts))
                         AgentStateStore.addLog("Synced ${contacts.size} phone contacts")
-                        android.util.Log.i("BrahmaWebSocketClient", "Synced ${contacts.size} contacts to ARYA")
+                        android.util.Log.i("BrahmaWebSocketClient", "Synced ${contacts.size} contacts to JARVIS")
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("BrahmaWebSocketClient", "Error syncing contacts: ${e.message}", e)

@@ -232,7 +232,7 @@ class CloudScheduler:
 
         try:
             res = await phone_hub.call_phone(
-                caller_name="ARYA (Urgent Alert)",
+                caller_name="JARVIS (Urgent Alert)",
                 reason=reason
             )
             logger.info(f"📞 Urgent call trigger response: {res}")
@@ -266,7 +266,7 @@ class CloudScheduler:
                             changed = True
 
                             call_res = await phone_hub.call_phone(
-                                caller_name="ARYA (Reminder)",
+                                caller_name="JARVIS (Reminder)",
                                 reason=f"Scheduled reminder: {reason}"
                             )
                             if call_res.get("success"):

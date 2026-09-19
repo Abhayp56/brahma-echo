@@ -76,7 +76,7 @@ class CallManager private constructor(private val context: Context) {
         val callId = "user-call-" + System.currentTimeMillis()
         val offer = CallOfferPayload(
             callId = callId,
-            callerName = "ARYA",
+            callerName = "JARVIS",
             reason = reason,
             timestamp = System.currentTimeMillis()
         )
@@ -96,7 +96,7 @@ class CallManager private constructor(private val context: Context) {
         speechEngine?.start()
 
         onSendCallRequest?.invoke(reason)
-        Log.i(TAG, "Outbound call started to ARYA: $callId (reason: $reason)")
+        Log.i(TAG, "Outbound call started to JARVIS: $callId (reason: $reason)")
     }
 
     fun updateCallId(newCallId: String) {

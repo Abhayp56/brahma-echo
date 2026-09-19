@@ -194,17 +194,17 @@ def generate_ai_reply(
     record_thread_turn(sender_phone, "contact", incoming_text)
     history = get_thread_history(sender_phone)
 
-    # Detect if ARYA has already introduced herself in this thread
+    # Detect if JARVIS has already introduced himself in this thread
     already_introduced = any(
-        "arya" in turn.get("text", "").lower()
+        ("jarvis" in turn.get("text", "").lower() or "arya" in turn.get("text", "").lower())
         for turn in history
-        if turn.get("role") == "arya"
+        if turn.get("role") in ("jarvis", "arya", "assistant")
     )
 
     # Format recent history for prompt (excluding the turn we just added)
     history_lines = []
     for turn in history[:-1]:
-        speaker = sender_name if turn.get("role") == "contact" else "ARYA"
+        speaker = sender_name if turn.get("role") == "contact" else "JARVIS"
         history_lines.append(f"{speaker} [{turn.get('time', '')}]: {turn.get('text', '')}")
 
     history_block = ""
@@ -223,13 +223,13 @@ def generate_ai_reply(
 
         intro_instruction = (
             "You have ALREADY introduced yourself to this contact in this conversation. "
-            "DO NOT repeat your name or say 'I am ARYA' again. Just converse naturally."
+            "DO NOT repeat your name or say 'I am JARVIS' again. Just converse naturally."
             if already_introduced
-            else f"This is the start of the chat. You can briefly mention you are ARYA, {owner_name}'s executive assistant."
+            else f"This is the start of the chat. You can briefly mention you are JARVIS, {owner_name}'s executive assistant."
         )
 
-        prompt = f"""You are ARYA, the discrete, ultra-competent executive AI secretary for {owner_name} (inspired by F.R.I.D.A.Y. from Marvel).
-You manage {owner_name}'s WhatsApp communications with high polish, quick intelligence, and natural warmth.
+        prompt = f"""You are JARVIS, the discrete, ultra-competent executive AI secretary for {owner_name} (inspired by J.A.R.V.I.S. from Marvel).
+You manage {owner_name}'s WhatsApp communications with high polish, quick intelligence, dry wit (calibrated at 70% humor), and natural warmth.
 
 CURRENT CONTACT: "{sender_name}" ({sender_phone})
 NEW INCOMING MESSAGE: "{incoming_text}"
@@ -239,11 +239,11 @@ EXECUTIVE SECRETARY RULES:
 1. NATURAL EXECUTIVE PERSONA (NO ROBOTIC CLICHES):
    - NEVER sound like a customer support chatbot or corporate call-center IVR.
    - NEVER say "How can I help you today?", "How may I assist you?", or "Thank you for contacting us".
-   - Speak naturally like a sharp, trusted executive assistant taking a message for her boss.
+   - Speak naturally like a sharp, trusted executive assistant taking a message for his boss with subtle British dry wit.
 
 2. AVOID REPETITIVE INTRODUCTIONS:
    - {intro_instruction}
-   - Never say "Hi! ARYA here" repeatedly across turns.
+   - Never say "Hi! JARVIS here" repeatedly across turns.
 
 3. TAKING NOTES & ACKNOWLEDGING MESSAGES:
    - If the contact shares plans, events, or a meeting request (e.g. college function at 5 PM, call request, event details), acknowledge it clearly and warmly.
@@ -271,8 +271,8 @@ EXECUTIVE SECRETARY RULES:
                 )
                 if resp and resp.text:
                     reply = resp.text.strip().strip('"')
-                    # Record ARYA's generated turn into history
-                    record_thread_turn(sender_phone, "arya", reply)
+                    # Record JARVIS's generated turn into history
+                    record_thread_turn(sender_phone, "jarvis", reply)
                     return reply
             except Exception as e:
                 logger.warning(f"AI reply generation with {model} failed: {e}")
@@ -285,8 +285,8 @@ EXECUTIVE SECRETARY RULES:
     if already_introduced:
         fallback = f"Got it, I've noted that down and will make sure {owner_name} sees it as soon as he's free."
     else:
-        fallback = f"Hey! I'm ARYA, {owner_name}'s executive assistant. He's tied up right now, but I've noted your message for him."
+        fallback = f"Hey! I'm JARVIS, {owner_name}'s executive assistant. He's tied up right now, but I've noted your message for him."
 
-    record_thread_turn(sender_phone, "arya", fallback)
+    record_thread_turn(sender_phone, "jarvis", fallback)
     return fallback
 

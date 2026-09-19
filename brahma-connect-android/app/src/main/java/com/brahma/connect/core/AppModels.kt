@@ -125,7 +125,7 @@ enum class CallState {
 
 data class CallOfferPayload(
     val callId: String,
-    val callerName: String = "ARYA",
+    val callerName: String = "JARVIS",
     val reason: String = "Voice Call",
     val timestamp: Long = System.currentTimeMillis(),
 )

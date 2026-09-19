@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ARYA — Cloud Voice & Brain Hub</title>
+  <title>JARVIS — Cloud Voice & Brain Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -839,7 +839,7 @@
     <div class="brand">
       <div class="logo-badge">⚡</div>
       <div>
-        <h1>ARYA</h1>
+        <h1>JARVIS</h1>
         <span>Cloud Brain & Voice Engine</span>
       </div>
     </div>
@@ -867,7 +867,7 @@
     <div class="orb-container">
       <div class="orb-ring ring-1"></div>
       <div class="orb-ring ring-2"></div>
-      <button class="mic-button" id="micBtn" title="Click to speak to ARYA">
+      <button class="mic-button" id="micBtn" title="Click to speak to JARVIS">
         <svg class="mic-icon" viewBox="0 0 24 24">
           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
           <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
@@ -876,7 +876,7 @@
       </button>
     </div>
 
-    <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with ARYA</div>
+    <div class="status-text" id="statusSubtitle">Click the orb or type below to speak with JARVIS</div>
 
     <div class="voice-controls">
       <label class="toggle-pill" id="autoListenToggle" title="Continuous Hands-Free Conversation Mode">
@@ -887,7 +887,7 @@
     </div>
 
     <div class="chat-box" id="chatBox">
-      <div class="msg sys">⚡ ARYA Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
+      <div class="msg sys">⚡ JARVIS Cloud Brain Online. Connected to Gemini Multimodal Live.</div>
     </div>
 
     <div class="input-bar">
@@ -905,14 +905,14 @@
   <div class="modal-overlay" id="memoryModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>🧠 ARYA Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
+        <h2>🧠 JARVIS Long-Term Memory <span class="modal-badge online" id="memoryStatusBadge">Loading...</span></h2>
         <button class="modal-close" id="closeMemoryBtn" onclick="closeMemoryModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div id="memoryListContainer"></div>
 
         <div class="mem-cat-group">
-          <div class="mem-cat-title">Teach ARYA a Fact Manually</div>
+          <div class="mem-cat-title">Teach JARVIS a Fact Manually</div>
           <div class="add-mem-form">
             <select id="newMemCat">
               <option value="identity">identity</option>
@@ -936,7 +936,7 @@
   <div class="modal-overlay" id="whatsappModal">
     <div class="modal-card" style="max-width: 720px;">
       <div class="modal-header">
-        <h2>📱 ARYA WhatsApp Control Center <span class="modal-badge" id="waHeaderBadge" style="background: rgba(37,211,102,0.15); color: #25d366; border: 1px solid #25d366;">Connecting...</span></h2>
+        <h2>📱 JARVIS WhatsApp Control Center <span class="modal-badge" id="waHeaderBadge" style="background: rgba(37,211,102,0.15); color: #25d366; border: 1px solid #25d366;">Connecting...</span></h2>
         <button class="modal-close" id="closeWhatsAppBtn" onclick="closeWhatsAppModal()">&times;</button>
       </div>
       <div class="modal-body" style="padding: 20px; overflow-y: auto;">
@@ -957,7 +957,7 @@
           <div id="waUnlinkedContainer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
               <div>
-                <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 4px; color: #25d366;">Link Your WhatsApp to ARYA</h3>
+                <h3 id="waStatusTitle" style="font-size: 16px; margin-bottom: 4px; color: #25d366;">Link Your WhatsApp to JARVIS</h3>
                 <p id="waStatusDesc" style="font-size: 12px; color: var(--text-muted); margin: 0;">Choose how you want to link your WhatsApp account:</p>
               </div>
               <div style="display: flex; gap: 6px;">
@@ -1020,7 +1020,7 @@
             <span>🤖 AI Auto-Conversation Mode</span>
             <span id="waModeBadge" style="font-size: 11px; background: var(--panel-border); color: var(--accent); padding: 2px 8px; border-radius: 10px;">Co-Pilot</span>
           </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Choose how ARYA interacts with people who message your WhatsApp:</p>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Choose how JARVIS interacts with people who message your WhatsApp:</p>
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="wa-mode-pill active" data-mode="notify_only" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(255,179,0,0.1); color: #fff; font-size: 12px; cursor: pointer;">
               🔔 Co-Pilot (Notify Only)
@@ -1029,7 +1029,7 @@
               ⭐ VIP Whitelist Mode
             </button>
             <button class="wa-mode-pill" data-mode="auto_pilot" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 12px; cursor: pointer;">
-              ⚡ Full Auto-Pilot (F.R.I.D.A.Y.)
+              ⚡ Full Auto-Pilot (J.A.R.V.I.S.)
             </button>
           </div>
         </div>
@@ -1041,7 +1041,7 @@
             <span id="waVipCountBadge" style="font-size: 11px; background: rgba(255,179,0,0.15); color: var(--accent); padding: 2px 8px; border-radius: 10px;">0 VIPs</span>
           </div>
           <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-            In <strong>VIP Whitelist Mode</strong>, ARYA only auto-replies to contacts in this list. In <strong>Auto-Pilot Mode</strong>, she replies to all direct messages (group messages are always safely excluded).
+            In <strong>VIP Whitelist Mode</strong>, JARVIS only auto-replies to contacts in this list. In <strong>Auto-Pilot Mode</strong>, he replies to all direct messages (group messages are always safely excluded).
           </p>
           <div id="waVipChipsContainer" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; min-height: 28px;">
             <div style="font-size: 12px; color: var(--text-muted);">No VIP numbers added yet.</div>
@@ -1054,7 +1054,7 @@
 
         <!-- Quick Send Box -->
         <div style="margin-top: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
-          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📤 Send a WhatsApp Message via ARYA</div>
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📤 Send a WhatsApp Message via JARVIS</div>
           <div style="display: flex; gap: 10px; margin-bottom: 8px;">
             <input type="text" id="waQuickRecipient" placeholder="Recipient (Name or +Phone with country code)" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
             <input type="text" id="waQuickMessage" placeholder="Message text" style="flex: 2; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none;" />
@@ -1082,7 +1082,7 @@
       </div>
       <div class="modal-body">
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-          Connect your Android phone directly to the Cloud Brain over secure WebSocket (WSS). No laptop mediator required. ARYA can call your phone from anywhere in the world!
+          Connect your Android phone directly to the Cloud Brain over secure WebSocket (WSS). No laptop mediator required. JARVIS can call your phone from anywhere in the world!
         </p>
 
         <!-- Phone Disconnected: QR Code Pairing View -->
@@ -1489,7 +1489,7 @@
 
       appendMsg('user', text);
       cmdInput.value = '';
-      statusSubtitle.textContent = 'ARYA is thinking...';
+      statusSubtitle.textContent = 'JARVIS is thinking...';
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'text_command', text: text }));
@@ -1520,7 +1520,7 @@
     function appendMsg(type, content) {
       const el = document.createElement('div');
       el.className = 'msg ' + type;
-      el.textContent = (type === 'user' ? 'You: ' : type === 'ai' ? 'ARYA: ' : '') + content;
+      el.textContent = (type === 'user' ? 'You: ' : type === 'ai' ? 'JARVIS: ' : '') + content;
       chatBox.appendChild(el);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
@@ -1604,7 +1604,7 @@
         }
 
         if (!hasAny) {
-          memoryListContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 24px;">No memories stored yet. Speak with ARYA to automatically record facts!</div>';
+          memoryListContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 24px;">No memories stored yet. Speak with JARVIS to automatically record facts!</div>';
         }
 
         // Attach delete handlers
@@ -2164,7 +2164,7 @@
         const res = await fetch('/api/phone/call', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caller: 'ARYA', reason: 'Direct Cloud Voice Call from ARYA Web AI' })
+          body: JSON.stringify({ caller: 'JARVIS', reason: 'Direct Cloud Voice Call from JARVIS Web AI' })
         });
         const data = await res.json();
         if (data.success) {

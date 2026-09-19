@@ -102,7 +102,7 @@ class BrahmaConnectForegroundService : Service() {
             if (credential != null && (credential.gatewayHost.isNotBlank() || credential.gatewayUrl.isNotBlank())) {
                 val isCloud = credential.ssl || credential.gatewayUrl.contains("onrender.com")
                 endpoint = GatewayEndpoint(
-                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    name = if (isCloud) "JARVIS Cloud AI" else "Brahma PC",
                     host = credential.gatewayHost,
                     port = credential.gatewayPort,
                     ssl = credential.ssl,
@@ -112,7 +112,7 @@ class BrahmaConnectForegroundService : Service() {
             } else if (offer != null && (offer.host.isNotBlank() || offer.url.isNotBlank())) {
                 val isCloud = offer.ssl || offer.url.contains("onrender.com")
                 endpoint = GatewayEndpoint(
-                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    name = if (isCloud) "JARVIS Cloud AI" else "Brahma PC",
                     host = offer.host,
                     port = offer.port,
                     ssl = offer.ssl,

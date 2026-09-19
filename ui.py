@@ -4406,8 +4406,8 @@ class SetupOverlay(QWidget):
         self._stack.addWidget(page)
 
     def _save_identity_and_next(self):
-        identity.set_assistant_name(self._inp_ast.text().strip() or "Brahma")
-        identity.set_application_name(self._inp_app.text().strip() or "Brahma Echo")
+        identity.set_assistant_name(self._inp_ast.text().strip() or "JARVIS")
+        identity.set_application_name(self._inp_app.text().strip() or "JARVIS")
         self._stack.setCurrentIndex(2)
 
     # ── STAGE 1.2: Owner Profile ────────────────────────────────
@@ -9313,16 +9313,34 @@ class SystemConnectivityPage(QWidget):
         ast_row = QHBoxLayout()
         ast_row.addWidget(QLabel("Assistant Name"))
         self._set_ast_name = QLineEdit(identity.get_assistant_name())
-        self._set_ast_name.textChanged.connect(lambda t: identity.set_assistant_name(t.strip() or "Brahma"))
+        self._set_ast_name.textChanged.connect(lambda t: identity.set_assistant_name(t.strip() or "JARVIS"))
         ast_row.addWidget(self._set_ast_name)
         ilay.addLayout(ast_row)
         
         app_row = QHBoxLayout()
         app_row.addWidget(QLabel("Application Name"))
         self._set_app_name = QLineEdit(identity.get_application_name())
-        self._set_app_name.textChanged.connect(lambda t: identity.set_application_name(t.strip() or "Brahma Echo"))
+        self._set_app_name.textChanged.connect(lambda t: identity.set_application_name(t.strip() or "JARVIS"))
         app_row.addWidget(self._set_app_name)
         ilay.addLayout(app_row)
+
+        gender_row = QHBoxLayout()
+        gender_row.addWidget(QLabel("Assistant Gender"))
+        self._set_ast_gender = QComboBox()
+        self._set_ast_gender.addItems(["male", "female"])
+        self._set_ast_gender.setCurrentText(identity.get_assistant_gender())
+        self._set_ast_gender.currentTextChanged.connect(lambda t: identity.set_assistant_gender(t))
+        gender_row.addWidget(self._set_ast_gender)
+        ilay.addLayout(gender_row)
+
+        voice_row = QHBoxLayout()
+        voice_row.addWidget(QLabel("Assistant Voice"))
+        self._set_ast_voice = QComboBox()
+        self._set_ast_voice.addItems(["Charon", "Aoede", "Fenrir", "Puck", "Kore"])
+        self._set_ast_voice.setCurrentText(identity.get_assistant_voice())
+        self._set_ast_voice.currentTextChanged.connect(lambda t: identity.set_assistant_voice(t))
+        voice_row.addWidget(self._set_ast_voice)
+        ilay.addLayout(voice_row)
 
         # Owner Profile
         own_row = QHBoxLayout()
@@ -9348,6 +9366,21 @@ class SystemConnectivityPage(QWidget):
         self._set_beh_mode.currentTextChanged.connect(lambda t: identity.set_behavior_mode(t))
         beh_row.addWidget(self._set_beh_mode)
         ilay.addLayout(beh_row)
+
+        humor_row = QHBoxLayout()
+        humor_val = identity.get_humor_level()
+        self._humor_lbl = QLabel(f"Humor Level: {humor_val}% (High Wit & Banter)")
+        self._set_humor_slider = QSlider(Qt.Orientation.Horizontal)
+        self._set_humor_slider.setRange(0, 100)
+        self._set_humor_slider.setValue(humor_val)
+        def _on_humor_slider_changed(val):
+            identity.set_humor_level(val)
+            desc = "High Wit & Banter" if val >= 70 else "Balanced Wit" if val >= 40 else "Subtle / Dry" if val > 0 else "Serious"
+            self._humor_lbl.setText(f"Humor Level: {val}% ({desc})")
+        self._set_humor_slider.valueChanged.connect(_on_humor_slider_changed)
+        humor_row.addWidget(self._humor_lbl)
+        humor_row.addWidget(self._set_humor_slider)
+        ilay.addLayout(humor_row)
 
         lay.addWidget(identity_card)
 

@@ -105,7 +105,7 @@ class VoiceCallAudioEngine(
 
             mainHandler.removeCallbacks(finishPlaybackRunnable)
             onPlaybackStarted?.invoke()
-            // If no more chunks arrive within 350ms, ARYA finished speaking this chunk sequence
+            // If no more chunks arrive within 350ms, JARVIS finished speaking this chunk sequence
             mainHandler.postDelayed(finishPlaybackRunnable, 350L)
         } catch (e: Exception) {
             Log.w(TAG, "Error playing incoming audio chunk: ${e.message}")

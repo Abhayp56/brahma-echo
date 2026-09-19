@@ -446,14 +446,14 @@ class WhatsAppGateway:
             time.sleep(1.5)  # Natural human delay
             reply = generate_ai_reply(sender_name, sender_phone, incoming_text)
             if not reply:
-                reply = "Hey! This is ARYA, Abhay's AI assistant. He is currently occupied, but I've noted your message for him!"
+                reply = "Hey! This is JARVIS, Abhay's AI assistant. He is currently occupied, but I've noted your message for him!"
 
-            logger.info(f"🤖 ARYA sending autonomous WhatsApp reply to {sender_name}: '{reply}'")
+            logger.info(f"🤖 JARVIS sending autonomous WhatsApp reply to {sender_name}: '{reply}'")
             res = self.send_text(sender_phone, reply, target_jid=reply_jid)
             if res.get("success"):
                 record = {
                     "id": str(time.time()),
-                    "sender": "ARYA (AI Auto-Reply)",
+                    "sender": "JARVIS (AI Auto-Reply)",
                     "phone": sender_phone,
                     "text": reply,
                     "time": time.strftime("%H:%M"),
@@ -479,7 +479,7 @@ class WhatsAppGateway:
         if self.status != "connected" or not self.client:
             return {
                 "success": False,
-                "error": "WhatsApp is not connected. Please scan the QR code in the ARYA Web UI first.",
+                "error": "WhatsApp is not connected. Please scan the QR code in the JARVIS Web UI first.",
             }
 
         try:
@@ -505,7 +505,7 @@ class WhatsAppGateway:
             # Record outgoing message
             record = {
                 "id": str(time.time()),
-                "sender": "You / ARYA",
+                "sender": "You / JARVIS",
                 "phone": phone,
                 "text": message,
                 "time": time.strftime("%H:%M"),
@@ -539,7 +539,7 @@ class WhatsAppGateway:
         if self.status != "connected" or not self.client:
             return {
                 "success": False,
-                "error": "WhatsApp is not connected. Please scan the QR code in the ARYA Web UI first.",
+                "error": "WhatsApp is not connected. Please scan the QR code in the JARVIS Web UI first.",
             }
 
         phone = resolve_phone_number(recipient)
@@ -578,7 +578,7 @@ class WhatsAppGateway:
 
             record = {
                 "id": str(time.time()),
-                "sender": "You / ARYA",
+                "sender": "You / JARVIS",
                 "phone": phone,
                 "text": f"[{'Image' if is_image else 'Document'}: {file_path.name}] {caption}",
                 "time": time.strftime("%H:%M"),

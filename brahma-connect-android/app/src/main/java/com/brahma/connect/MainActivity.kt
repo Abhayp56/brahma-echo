@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
             val isCloud = it.ssl || it.url.contains("onrender.com")
             AgentStateStore.setGateway(
                 com.brahma.connect.core.GatewayEndpoint(
-                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    name = if (isCloud) "JARVIS Cloud AI" else "Brahma PC",
                     host = it.host,
                     port = it.port,
                     ssl = it.ssl,
@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
             val isCloud = cred.ssl || cred.gatewayUrl.contains("onrender.com")
             AgentStateStore.setGateway(
                 com.brahma.connect.core.GatewayEndpoint(
-                    name = if (isCloud) "ARYA Cloud AI" else "Brahma PC",
+                    name = if (isCloud) "JARVIS Cloud AI" else "Brahma PC",
                     host = cred.gatewayHost,
                     port = cred.gatewayPort,
                     ssl = cred.ssl,

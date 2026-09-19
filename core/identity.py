@@ -22,14 +22,17 @@ class IdentityService:
                 "about": ""
             },
             "assistant": {
-                "name": "ARYA",
-                "application_name": "ARYA",
-                "title": "Personal AI Assistant"
+                "name": "JARVIS",
+                "application_name": "JARVIS",
+                "title": "Personal AI Assistant",
+                "gender": "male",
+                "voice": "Charon"
             },
             "behavior": {
                 "mode": "professional",
                 "proactive": True,
-                "custom_instructions": ""
+                "custom_instructions": "",
+                "humor_level": 70
             },
             "system": {
                 "shared_computer": False
@@ -64,14 +67,14 @@ class IdentityService:
 
     # Assistant methods
     def get_assistant_name(self) -> str:
-        return self.data["assistant"].get("name", "ARYA")
+        return self.data["assistant"].get("name", "JARVIS")
         
     def set_assistant_name(self, name: str):
         self.data["assistant"]["name"] = name
         self.save()
 
     def get_application_name(self) -> str:
-        return self.data["assistant"].get("application_name", "ARYA")
+        return self.data["assistant"].get("application_name", "JARVIS")
         
     def set_application_name(self, name: str):
         self.data["assistant"]["application_name"] = name
@@ -82,6 +85,20 @@ class IdentityService:
         
     def set_assistant_title(self, title: str):
         self.data["assistant"]["title"] = title
+        self.save()
+
+    def get_assistant_gender(self) -> str:
+        return self.data["assistant"].get("gender", "male")
+
+    def set_assistant_gender(self, gender: str):
+        self.data["assistant"]["gender"] = gender
+        self.save()
+
+    def get_assistant_voice(self) -> str:
+        return self.data["assistant"].get("voice", "Charon")
+
+    def set_assistant_voice(self, voice: str):
+        self.data["assistant"]["voice"] = voice
         self.save()
 
     # Owner Profile methods
@@ -142,6 +159,13 @@ class IdentityService:
         
     def set_proactive(self, proactive: bool):
         self.data["behavior"]["proactive"] = proactive
+        self.save()
+
+    def get_humor_level(self) -> int:
+        return int(self.data["behavior"].get("humor_level", 70))
+
+    def set_humor_level(self, level: int):
+        self.data["behavior"]["humor_level"] = max(0, min(100, int(level)))
         self.save()
 
     # System methods

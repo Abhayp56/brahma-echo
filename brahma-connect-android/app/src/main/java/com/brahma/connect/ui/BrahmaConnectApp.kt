@@ -251,7 +251,7 @@ fun BrahmaConnectApp(
                             storage.saveGatewayHint(offer)
                             AgentStateStore.setPairingOffer(offer)
                             val isCloud = offer.ssl || offer.url.contains("onrender.com")
-                            val endpointName = if (isCloud) "ARYA Cloud AI" else "Brahma PC"
+                            val endpointName = if (isCloud) "JARVIS Cloud AI" else "Brahma PC"
                             AgentStateStore.setGateway(
                                 GatewayEndpoint(
                                     name = endpointName,
@@ -580,7 +580,7 @@ private fun ConnectedScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        // --- Call ARYA Live Action Card ---
+        // --- Call JARVIS Live Action Card ---
         Card(
             onClick = onStartCall,
             modifier = Modifier.fillMaxWidth(),
@@ -609,7 +609,7 @@ private fun ConnectedScreen(
                     Spacer(Modifier.size(14.dp))
                     Column {
                         Text(
-                            "Call ARYA",
+                            "Call JARVIS",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleLarge,
                             color = androidx.compose.ui.graphics.Color.White

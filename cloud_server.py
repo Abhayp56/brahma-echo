@@ -153,7 +153,7 @@ class WebSocketToolDispatcher(RemoteToolDispatcher):
                 future.set_result(payload)
 
 
-app = FastAPI(title="ARYA Cloud Brain", version="2.0.0")
+app = FastAPI(title="JARVIS Cloud Brain", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -303,7 +303,7 @@ class CloudPhoneHub:
         self.phone_info = {}
         self.active_calls.clear()
 
-    async def call_phone(self, caller_name: str = "ARYA", reason: str = "Voice call from ARYA") -> Dict[str, Any]:
+    async def call_phone(self, caller_name: str = "JARVIS", reason: str = "Voice call from JARVIS") -> Dict[str, Any]:
         if not self.is_connected:
             return {"success": False, "error": "Phone is not connected directly to the cloud server."}
 
@@ -539,7 +539,7 @@ def broadcast_whatsapp_event(event_type: str, payload: Any):
 
 def on_phone_call_event(event_type: str, call_data: Dict[str, Any]):
     """Handles phone call status changes (unanswered, declined) for Telegram alert failover."""
-    reason = call_data.get("reason", "Voice call from ARYA")
+    reason = call_data.get("reason", "Voice call from JARVIS")
     from cloud.cloud_daily_briefing import get_now_ist
     time_str = get_now_ist().strftime("%I:%M %p IST")
 
@@ -551,7 +551,7 @@ def on_phone_call_event(event_type: str, call_data: Dict[str, Any]):
 
         if event_type == "call_unanswered":
             msg = (
-                f"📞 **Missed Call from ARYA**\n\n"
+                f"📞 **Missed Call from JARVIS**\n\n"
                 f"Boss, I placed a voice call to your phone at {time_str}, but you didn't receive the call.\n\n"
                 f"📌 **Call Purpose / Reminder**:\n_{reason}_\n\n"
                 f"💬 _You can chat with me here anytime or use my tools!_"
@@ -595,7 +595,7 @@ def on_scheduler_failover(event_type: str, reminder: Dict[str, Any], details: st
 async def on_startup():
     global brain, main_loop
     main_loop = asyncio.get_running_loop()
-    logger.info("Initializing ARYA Cloud Brain...")
+    logger.info("Initializing JARVIS Cloud Brain...")
     brain = CloudBrain(
         tool_dispatcher=dispatcher,
         phone_hub=phone_hub,
@@ -1436,8 +1436,8 @@ async def trigger_call_greeting(reason: str):
             greeting = (
                 f"[FIRST CALL OF THE DAY - EXECUTIVE DAILY BRIEFING]\n"
                 f"Today is {briefing['date']}, exact time is {briefing['time']}.\n"
-                f"This is the boss's FIRST phone call of the day! Greet Abhay with supreme energy, poise, and warmth as ARYA.\n"
-                f"LANGUAGE & IDENTITY RULE: Speak in your natural, fluent Hindi / Hinglish as your primary language using your female identity ('मैं कर रही हूँ', 'मैं बताती हूँ', 'करूँगी').\n"
+                f"This is the boss's FIRST phone call of the day! Greet Abhay with supreme energy, poise, and warmth as JARVIS.\n"
+                f"LANGUAGE & IDENTITY RULE: Speak in your natural, fluent Hindi / Hinglish as your primary language using your male identity ('मैं कर रहा हूँ', 'मैं बताता हूँ', 'करूँगा') with your 70% witty humor and charm.\n"
                 f"Deliver his full executive briefing smoothly without skipping sections:\n"
                 f"1. Warm daily greeting and exact IST time ({briefing['time']})\n"
                 f"2. Local weather in {briefing['location']}: {briefing['weather']}\n"
@@ -1451,7 +1451,7 @@ async def trigger_call_greeting(reason: str):
             time_str = now_ist.strftime("%I:%M %p IST")
             greeting = (
                 f"[The user just called you directly from their Android phone (reason: '{reason}'). "
-                f"Current IST time is {time_str}. Greet the boss warmly and naturally in Hindi as ARYA (female AI co-pilot, 'नमस्ते बॉस, बताइए मैं आपकी क्या मदद करूँ?'). "
+                f"Current IST time is {time_str}. Greet the boss warmly and naturally in Hindi as JARVIS (male AI co-pilot, 'नमस्ते बॉस, बताइए मैं आपकी क्या सेवा करूँ?'). "
                 f"Match the user's language dynamically if they reply in English or Hindi!]"
             )
 
@@ -1459,7 +1459,7 @@ async def trigger_call_greeting(reason: str):
     except Exception as gerr:
         logger.error(f"Error triggering call greeting: {gerr}")
         if brain:
-            await brain.handle_text_command("[Voice call connected with user on phone. Greet the user warmly as ARYA in Hindi and ask how you can assist them!]")
+            await brain.handle_text_command("[Voice call connected with user on phone. Greet the user warmly as JARVIS in Hindi with witty charm and ask how you can assist them!]")
 
 
 @app.websocket("/ws/phone")

@@ -15,7 +15,7 @@ class BootReceiver : BroadcastReceiver() {
             val credential = storage.loadCredential()
             val hint = storage.loadGatewayHint()
 
-            // Only auto-start if the user previously paired with Brahma or ARYA Cloud
+            // Only auto-start if the user previously paired with Brahma or JARVIS Cloud
             if (credential != null || hint != null) {
                 android.util.Log.i("BootReceiver", "Device booted or updated. Auto-starting BrahmaConnectForegroundService...")
                 val serviceIntent = Intent(context, BrahmaConnectForegroundService::class.java)

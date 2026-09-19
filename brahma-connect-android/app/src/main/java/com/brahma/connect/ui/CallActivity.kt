@@ -82,7 +82,7 @@ class CallActivity : ComponentActivity() {
             requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
         }
 
-        val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: "ARYA"
+        val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: "JARVIS"
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "Voice Call"
 
         setContent {

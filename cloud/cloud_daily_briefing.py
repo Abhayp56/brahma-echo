@@ -242,7 +242,7 @@ async def compile_server_daily_briefing(category: str = "all") -> Dict[str, Any]
     en_parts.append("All server systems are fully operational. What are your orders, boss?")
     full_narrative_en = " ".join(en_parts)
 
-    # Build natural spoken Hindi narrative (female inflection: करती हूँ, बताती हूँ)
+    # Build natural spoken Hindi narrative (male inflection: करता हूँ, बताता हूँ)
     hi_parts = [
         f"{greeting_hi} आज {date_str} है और ठीक समय {time_str} है।",
         f"मौसम: {loc_display} में अभी मौसम {weather_str} है।",

@@ -46,7 +46,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             <html>
               <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #0c0e14; color: #fff;">
                 <h1 style="color: #00ff88;">Authentication Successful!</h1>
-                <p>ARYA is now authorized to access Google Calendar and Gmail.</p>
+                <p>JARVIS is now authorized to access Google Calendar and Gmail.</p>
                 <p>You can close this tab and return to your terminal.</p>
               </body>
             </html>
@@ -95,7 +95,7 @@ def exchange_and_save(code: str, client_id: str, client_secret: str, redirect_ur
             json.dump(token_data, f, indent=2)
 
         print(f"\n[SUCCESS] Google Calendar and Gmail tokens saved to:\n  {TOKEN_PATH}")
-        print("\nARYA is now ready to manage your Calendar and Gmail!")
+        print("\nJARVIS is now ready to manage your Calendar and Gmail!")
 
         # Live verification
         try:
@@ -131,7 +131,7 @@ def exchange_and_save(code: str, client_id: str, client_secret: str, redirect_ur
 
 def main():
     print("=" * 65)
-    print("  ARYA Google Workspace (Calendar + Gmail) Authorization Setup")
+    print("  JARVIS Google Workspace (Calendar + Gmail) Authorization Setup")
     print("=" * 65)
 
     if not CREDENTIALS_PATH.exists():
