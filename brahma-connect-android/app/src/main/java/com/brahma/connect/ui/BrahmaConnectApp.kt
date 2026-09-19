@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import com.brahma.connect.accessibility.BrahmaAccessibilityService
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -551,6 +553,7 @@ private fun ConnectedScreen(
     onStartCall: () -> Unit,
     onScanQr: () -> Unit,
 ) {
+    val context = LocalContext.current
     val (stateColor, stateText) = when (state) {
         ConnectionState.CONNECTED -> androidx.compose.ui.graphics.Color(0xFF22C55E) to "● Connected to ${gateway?.name ?: "Brahma"}"
         ConnectionState.CONNECTING -> androidx.compose.ui.graphics.Color(0xFFFACC15) to "● Connecting to ${gateway?.name ?: "Brahma"}..."
@@ -623,6 +626,59 @@ private fun ConnectedScreen(
                     }
                 }
                 Text("LIVE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = androidx.compose.ui.graphics.Color(0xFF22C55E))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        // --- Accessibility Bridge Status & Setup Card ---
+        val isAccessRunning = BrahmaAccessibilityService.isRunning
+        Card(
+            onClick = {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF0F2942).copy(alpha = 0.85f) else androidx.compose.ui.graphics.Color(0xFF381515).copy(alpha = 0.85f),
+                contentColor = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF60A5FA) else androidx.compose.ui.graphics.Color(0xFFF87171)
+            ),
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF3B82F6).copy(alpha = 0.8f) else androidx.compose.ui.graphics.Color(0xFFEF4444).copy(alpha = 0.8f))
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF3B82F6).copy(alpha = 0.25f) else androidx.compose.ui.graphics.Color(0xFFEF4444).copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (isAccessRunning) "👁️" else "⚙️", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            "Accessibility Bridge",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.White
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (isAccessRunning) "Screen Vision & Auto-Click Active" else "Tap to Enable in Settings",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF93C5FD) else androidx.compose.ui.graphics.Color(0xFFFCA5A5)
+                        )
+                    }
+                }
+                Text(if (isAccessRunning) "ACTIVE" else "ENABLE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF3B82F6) else androidx.compose.ui.graphics.Color(0xFFEF4444))
             }
         }
         Spacer(Modifier.height(16.dp))

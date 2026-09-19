@@ -196,6 +196,7 @@ class CloudPhoneHub:
         self.phone_location: Dict[str, Any] = load_phone_location()
         self.last_first_call_date_ist: str = self._load_last_first_call_date()
         self.call_event_handlers: List[Callable[[str, Dict[str, Any]], Any]] = []
+        self.pending_commands: Dict[str, asyncio.Future] = {}
 
     def _load_last_first_call_date(self) -> str:
         date_file = BASE_DIR / "config" / "last_first_call_date.txt"
@@ -297,6 +298,58 @@ class CloudPhoneHub:
         self.phone_ws = None
         self.phone_info = {}
         self.active_calls.clear()
+        for req_id, fut in list(self.pending_commands.items()):
+            if not fut.done():
+                fut.set_result({"success": False, "error": "Phone disconnected while executing command", "error_code": "PHONE_DISCONNECTED"})
+        self.pending_commands.clear()
+
+    async def execute_phone_command(self, action: str, parameters: Optional[Dict[str, Any]] = None, timeout: float = 25.0) -> Dict[str, Any]:
+        """
+        Sends an execution command to the connected phone and awaits the result asynchronously.
+        """
+        if not self.is_connected or not self.phone_ws:
+            return {
+                "success": False,
+                "error": "Phone is currently disconnected from Brahma Cloud Brain. Please ensure Brahma Connect is running on your phone.",
+                "error_code": "PHONE_DISCONNECTED"
+            }
+
+        req_id = new_request_id()
+        msg = {
+            "type": "command_request",
+            "request_id": req_id,
+            "timestamp": now_iso(),
+            "payload": {
+                "action": action,
+                "parameters": parameters or {}
+            }
+        }
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        self.pending_commands[req_id] = future
+
+        try:
+            await self.phone_ws.send_text(json.dumps(msg))
+            logger.info(f"📱 Dispatched command '{action}' to phone (request_id={req_id})")
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+        except asyncio.TimeoutError:
+            logger.warning(f"📱 Command '{action}' timed out after {timeout}s (request_id={req_id})")
+            return {
+                "success": False,
+                "error": f"Command '{action}' timed out waiting for phone response after {timeout} seconds.",
+                "error_code": "TIMEOUT"
+            }
+        except Exception as e:
+            logger.error(f"📱 Error executing command '{action}': {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_code": "EXECUTION_ERROR"
+            }
+        finally:
+            self.pending_commands.pop(req_id, None)
 
     async def call_phone(self, caller_name: str = "JARVIS", reason: str = "Voice call from JARVIS") -> Dict[str, Any]:
         if not self.is_connected:
@@ -1041,6 +1094,19 @@ async def api_trigger_phone_call(data: Dict[str, Any] | None = None):
     return await phone_hub.call_phone(caller_name=caller, reason=reason)
 
 
+@app.post("/api/phone/command")
+async def api_trigger_phone_command(data: Dict[str, Any] | None = None):
+    """
+    Executes an action directly on the connected phone (see_screen, smart_ui_click, send_whatsapp, etc.).
+    """
+    params = data or {}
+    action = str(params.get("action", "")).strip()
+    parameters = params.get("parameters", {})
+    if not action:
+        raise HTTPException(status_code=400, detail="Missing 'action' parameter.")
+    return await phone_hub.execute_phone_command(action, parameters)
+
+
 async def trigger_call_greeting(reason: str):
     """
     Intelligently triggers the initial voice greeting when a phone call is connected:
@@ -1174,6 +1240,19 @@ async def websocket_phone_companion(websocket: WebSocket):
                     await websocket.send_text(json.dumps(reply))
                 except Exception as cex:
                     logger.error(f"Error processing contacts_sync: {cex}")
+
+            # 3b. Phone Command Result / Error Response
+            elif msg_type == "result":
+                if req_id and req_id in phone_hub.pending_commands:
+                    fut = phone_hub.pending_commands[req_id]
+                    if not fut.done():
+                        fut.set_result(payload)
+
+            elif msg_type == "error":
+                if req_id and req_id in phone_hub.pending_commands:
+                    fut = phone_hub.pending_commands[req_id]
+                    if not fut.done():
+                        fut.set_result({"success": False, "error": payload.get("error", "Phone command failed")})
 
             # 3c. Phone Location Auto-Sync (GPS & Locality for accurate localized weather)
             elif msg_type == "location_sync":

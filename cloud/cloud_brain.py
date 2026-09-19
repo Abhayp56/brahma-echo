@@ -467,6 +467,49 @@ class CloudBrain:
             except Exception as call_err:
                 return types.FunctionResponse(id=call_id, name=name, response={"error": f"Failed to call phone: {call_err}"})
 
+        # 1.5 Remote Android Phone Autonomous Control (Screen Vision, Taps, WhatsApp, Media, Comms)
+        if name == "phone_hub_control":
+            action = args.get("action", "")
+            if not action:
+                return types.FunctionResponse(id=call_id, name=name, response={"result": "Error: missing 'action' parameter."})
+
+            if not self.phone_hub or not self.phone_hub.is_connected:
+                msg = (
+                    "Your phone is currently not connected to JARVIS Cloud Brain. "
+                    "Please ensure the Brahma Connect app is running on your phone and connected."
+                )
+                return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+
+            self.log(f"📱 Executing phone_hub_control: action='{action}', args={args}")
+            try:
+                res = await self.phone_hub.execute_phone_command(action, args, timeout=30.0)
+                if res.get("success"):
+                    data = res.get("data", {})
+                    if action in ["see_screen", "inspect_screen"]:
+                        pkg = data.get("active_package", "Unknown")
+                        elements = data.get("elements", [])
+                        summary_lines = [f"Active App: {pkg} (Screen: {data.get('screen_size', [0,0])})", f"Detected {len(elements)} interactive items:"]
+                        for el in elements[:25]:
+                            summary_lines.append(f"  [{el.get('index')}] {el.get('label')} at center {el.get('center')}")
+                        msg = "\n".join(summary_lines)
+                    elif action == "get_screen_text":
+                        msg = f"Screen Text:\n{data.get('screen_text', 'No text')}"
+                    elif action in ["send_whatsapp", "send_whatsapp_message"]:
+                        msg = f"WhatsApp message successfully dispatched to {data.get('contact', 'contact')} ({data.get('phone')}). Message: \"{data.get('message')}\"."
+                    elif action == "play_media":
+                        msg = f"Media playback initiated for '{data.get('query')}' on {data.get('app', 'app')}."
+                    elif action == "make_call":
+                        msg = f"Phone call initiated to {data.get('number')} ({data.get('action')})."
+                    elif action == "get_location":
+                        msg = f"Phone GPS Location: Lat {data.get('latitude')}, Lon {data.get('longitude')} (Accuracy: {data.get('accuracy')}m)."
+                    else:
+                        msg = f"Phone action '{action}' executed successfully: {json.dumps(data)}"
+                else:
+                    msg = f"Phone action '{action}' failed: {res.get('error', 'Unknown error')}."
+                return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+            except Exception as e:
+                return types.FunctionResponse(id=call_id, name=name, response={"result": f"Error communicating with phone: {str(e)}"})
+
         # 1.45 Contact search & verification (read-only, non-sending)
         if name == "search_contact" or (name == "whatsapp_control" and str(args.get("action", "")).lower() in {"search_contact", "check_contact", "find_contact"}):
             query = args.get("query") or args.get("recipient") or args.get("phone") or args.get("message") or ""

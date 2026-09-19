@@ -297,7 +297,7 @@ class BrahmaWebSocketClient(
                     BrahmaProtocol.CAPABILITIES -> {
                         AgentStateStore.addLog("Capabilities synced")
                     }
-                    BrahmaProtocol.EXECUTE -> handleCommandMessage(root)
+                    BrahmaProtocol.EXECUTE, "command_request", "command" -> handleCommandMessage(root)
                     BrahmaProtocol.PING -> {
                         send(BrahmaProtocol.envelope(BrahmaProtocol.PONG, JSONObject().put("status", "ok"), requestId = root.optString("request_id")))
                     }

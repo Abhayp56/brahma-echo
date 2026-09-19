@@ -1053,5 +1053,59 @@ TOOL_DECLARATIONS = [
             },
             "required": ["reason"]
         }
+    },
+    {
+        "name": "phone_hub_control",
+        "description": (
+            "Remotely controls the user's Android phone in the background via Brahma Connect. "
+            "Allows JARVIS to see what is currently on the screen (see_screen), tap buttons or interactive elements (smart_ui_click), "
+            "type text into fields (smart_ui_type), scroll up/down (smart_ui_scroll), read all screen text (get_screen_text), "
+            "autonomously send WhatsApp messages (send_whatsapp), search and play music/videos on YouTube or Spotify (play_media), "
+            "place phone calls (make_call), send SMS texts (send_sms), read recent SMS (read_sms), fetch GPS coordinates (get_location), "
+            "toggle flashlight, adjust volume/brightness, vibrate, copy to clipboard, or list installed apps."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "The phone action to execute: 'see_screen', 'smart_ui_click', 'smart_ui_type', 'smart_ui_scroll', 'get_screen_text', 'send_whatsapp', 'play_media', 'make_call', 'send_sms', 'read_sms', 'get_location', 'set_volume', 'set_brightness', 'flashlight_on', 'flashlight_off', 'vibrate', 'get_clipboard', 'set_clipboard', 'list_apps', 'press_key'."
+                },
+                "target": {
+                    "type": "STRING",
+                    "description": "Target element label, text, index (e.g. '[1]'), or view ID when using smart_ui_click or smart_ui_type."
+                },
+                "text": {
+                    "type": "STRING",
+                    "description": "Text to type into inputs, SMS message body, WhatsApp message content, or clipboard text."
+                },
+                "contact": {
+                    "type": "STRING",
+                    "description": "Contact name or phone number for send_whatsapp, make_call, or send_sms."
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "Search query or song name for play_media (YouTube / Spotify)."
+                },
+                "app": {
+                    "type": "STRING",
+                    "description": "App selector for play_media: 'youtube' or 'spotify' (defaults to 'youtube')."
+                },
+                "direction": {
+                    "type": "STRING",
+                    "description": "Direction for smart_ui_scroll: 'down', 'up', 'left', 'right' (defaults to 'down')."
+                },
+                "key": {
+                    "type": "STRING",
+                    "description": "Key to press for press_key: 'back', 'home', 'recents', 'notifications', 'screenshot'."
+                },
+                "level": {
+                    "type": "INTEGER",
+                    "description": "Volume percentage (0-100) or brightness level (0-255)."
+                }
+            },
+            "required": ["action"]
+        }
     }
 ]
+
