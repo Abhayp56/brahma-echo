@@ -1,17 +1,32 @@
 services:
+  # 1. JARVIS Cloud Brain — Python FastAPI Backend (Voice, Phone, Telegram, WhatsApp)
   - type: web
     name: brahma-cloud-brain
     runtime: python
-    buildCommand: pip install -r requirements-cloud.txt && (nodeenv -p --node=20.18.0 || true) && cd gods-eye-view-main && npm install --include=dev --no-audit
+    buildCommand: pip install -r requirements-cloud.txt
     startCommand: python cloud_server.py
-    healthCheckPath: /api/status
+    healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: GEMINI_API_KEY
         sync: false
       - key: BRAHMA_CLOUD_TOKEN
         generateValue: true
+      - key: GEV_URL
+        sync: false
+
+  # 2. God's Eye View — Dedicated Node.js Tactical Recon 3D Globe
+  - type: web
+    name: brahma-gods-eye-view
+    runtime: node
+    rootDir: gods-eye-view-main
+    buildCommand: npm install --no-audit
+    startCommand: npm run dev -- --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
       - key: PUPPETEER_SKIP_DOWNLOAD
         value: "true"
       - key: NODE_ENV
         value: "development"
+      - key: HOST
+        value: "0.0.0.0"

@@ -673,8 +673,9 @@ async def on_shutdown():
 # ---------------------------------------------------------------------------
 # God's Eye View (Tactical Recon) Background Manager & Reverse Proxy
 # ---------------------------------------------------------------------------
+GEV_URL = os.getenv("GEV_URL", "").strip().rstrip("/")
 GEV_PORT = int(os.getenv("GEV_PORT", 4173))
-GEV_INTERNAL_URL = f"http://127.0.0.1:{GEV_PORT}"
+GEV_INTERNAL_URL = GEV_URL if GEV_URL else f"http://127.0.0.1:{GEV_PORT}"
 _gev_process: Optional[subprocess.Popen] = None
 _gev_http_client: Optional[httpx.AsyncClient] = None
 
@@ -824,8 +825,11 @@ def _gev_worker():
 
 
 def start_gev_background_process(force: bool = False):
-    """Starts God's Eye View Vite server in a non-blocking background thread with cooldown."""
+    """Starts God's Eye View Vite server in a non-blocking background thread with cooldown (skipped if GEV_URL is set)."""
     global _last_gev_start_time
+    if GEV_URL:
+        logger.info(f"[GEV] Using dedicated remote God's Eye View service at: {GEV_URL}")
+        return
     now = time.time()
     if _gev_is_installing:
         return
@@ -836,7 +840,7 @@ def start_gev_background_process(force: bool = False):
 
 
 async def proxy_to_gev(request: Request, target_path: str):
-    """Proxies HTTP requests to local God's Eye View server on GEV_PORT with fallback."""
+    """Proxies HTTP requests to God's Eye View (dedicated remote service or local instance)."""
     client = get_gev_http_client()
     url = httpx.URL(path=target_path, query=request.url.query.encode("utf-8"))
     req_headers = dict(request.headers)
@@ -860,32 +864,33 @@ async def proxy_to_gev(request: Request, target_path: str):
             background=BackgroundTask(res.aclose)
         )
     except Exception as err:
-        # Fallback probe via localhost
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as fallback_client:
-                fb_url = f"http://localhost:{GEV_PORT}{target_path}"
-                if request.url.query:
-                    fb_url += f"?{request.url.query}"
-                fb_req = fallback_client.build_request(
-                    method=request.method,
-                    url=fb_url,
-                    headers=req_headers,
-                    content=await request.body()
-                )
-                res = await fallback_client.send(fb_req, stream=True)
-                resp_headers = dict(res.headers)
-                resp_headers.pop("content-length", None)
-                return StreamingResponse(
-                    res.aiter_raw(),
-                    status_code=res.status_code,
-                    headers=resp_headers,
-                    background=BackgroundTask(res.aclose)
-                )
-        except Exception:
-            pass
+        if not GEV_URL:
+            # Fallback probe via localhost for local development
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as fallback_client:
+                    fb_url = f"http://localhost:{GEV_PORT}{target_path}"
+                    if request.url.query:
+                        fb_url += f"?{request.url.query}"
+                    fb_req = fallback_client.build_request(
+                        method=request.method,
+                        url=fb_url,
+                        headers=req_headers,
+                        content=await request.body()
+                    )
+                    res = await fallback_client.send(fb_req, stream=True)
+                    resp_headers = dict(res.headers)
+                    resp_headers.pop("content-length", None)
+                    return StreamingResponse(
+                        res.aiter_raw(),
+                        status_code=res.status_code,
+                        headers=resp_headers,
+                        background=BackgroundTask(res.aclose)
+                    )
+            except Exception:
+                pass
 
         return HTMLResponse(
-            f"<h3>Tactical Recon Server Initializing or Offline</h3><p>{err}</p>",
+            f"<h3>Tactical Recon Server Initializing or Offline</h3><p>{err}</p><p>Target: {GEV_INTERNAL_URL}</p>",
             status_code=502
         )
 
@@ -919,8 +924,29 @@ async def node_modules_proxy(request: Request, path: str):
 
 @app.api_route("/api/tactical-status", methods=["GET"])
 async def tactical_status():
-    """Checks whether the God's Eye View server is responding on GEV_PORT with rich diagnostics."""
+    """Checks whether the God's Eye View server is responding (remote service or local)."""
     global _gev_process
+
+    # 1. If configured with a dedicated remote service
+    if GEV_URL:
+        client = get_gev_http_client()
+        try:
+            res = await client.get("/", timeout=4.0)
+            return JSONResponse({
+                "status": "online",
+                "code": res.status_code,
+                "url": GEV_URL,
+                "mode": "remote_service",
+            })
+        except Exception as err:
+            return JSONResponse({
+                "status": "offline",
+                "error": str(err),
+                "url": GEV_URL,
+                "mode": "remote_service",
+            }, status_code=503)
+
+    # 2. Local process fallback for laptop development
     npm_found, node_found = find_node_or_npm()
     gev_dir = BASE_DIR / "gods-eye-view-main"
     vite_exists = (gev_dir / "node_modules" / "vite" / "bin" / "vite.js").exists()
@@ -949,6 +975,7 @@ async def tactical_status():
             "status": "online",
             "code": res.status_code,
             "port": GEV_PORT,
+            "mode": "local_process",
             "gev_running": is_running,
             "node_path": node_found,
             "npm_path": npm_found
@@ -962,6 +989,7 @@ async def tactical_status():
                     "status": "online",
                     "code": fallback_res.status_code,
                     "port": GEV_PORT,
+                    "mode": "local_process",
                     "via": "localhost",
                     "gev_running": is_running,
                     "node_path": node_found,
@@ -974,6 +1002,7 @@ async def tactical_status():
             "status": "offline",
             "error": str(e),
             "port": GEV_PORT,
+            "mode": "local_process",
             "node_path": node_found,
             "npm_path": npm_found,
             "vite_exists": vite_exists,
@@ -1010,7 +1039,7 @@ async def get_web_ui():
     ui_path = BASE_DIR / "cloud" / "web_ui.html"
     if ui_path.exists():
         return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>ARYA Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
+    return HTMLResponse(content="<h1>JARVIS Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])
@@ -1024,9 +1053,10 @@ async def health_check():
         content={
             "status": "healthy",
             "online": True,
-            "service": "Brahma Cloud Brain",
+            "service": "JARVIS Cloud Brain",
             "gemini_live_connected": brain.session is not None if brain else False,
             "laptop_connected": dispatcher.is_connected,
+            "gev_url": GEV_URL if GEV_URL else "/tactical",
         },
         status_code=200,
     )
@@ -1041,6 +1071,7 @@ async def get_status():
         "laptop_connected": dispatcher.is_connected,
         "laptop_info": dispatcher.laptop_info if dispatcher.is_connected else None,
         "active_rpc_requests": len(dispatcher.pending_requests),
+        "gev_url": GEV_URL if GEV_URL else "/tactical",
     }
 
 

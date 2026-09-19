@@ -2206,7 +2206,7 @@
     const tacticalModalBadge = document.getElementById('tacticalModalBadge');
     const gevIframe = document.getElementById('gevIframe');
     const gevOfflineBanner = document.getElementById('gevOfflineBanner');
-    const GEV_URL = '/tactical';
+    let GEV_URL = '/tactical';
 
     window.openTacticalModal = function() {
       if (tacticalModal) {
@@ -2260,15 +2260,19 @@
     async function checkGevStatus() {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         const res = await fetch('/api/tactical-status', { signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
         if (data.status === 'online') {
+          if (data.url && GEV_URL !== data.url) {
+            GEV_URL = data.url;
+            if (gevIframe) gevIframe.src = GEV_URL;
+          }
           if (tacticalNavDot) tacticalNavDot.className = 'tactical-status-dot online';
           if (tacticalModalBadge) {
             tacticalModalBadge.className = 'modal-badge online';
-            tacticalModalBadge.textContent = 'ONLINE (3D RECON)';
+            tacticalModalBadge.textContent = data.mode === 'remote_service' ? 'ONLINE (DEDICATED RECON)' : 'ONLINE (3D RECON)';
           }
           if (gevOfflineBanner) gevOfflineBanner.style.display = 'none';
         } else {
