@@ -1,14 +1,21 @@
 package com.brahma.connect.call
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.brahma.connect.R
 import com.brahma.connect.core.AgentStateStore
 import com.brahma.connect.core.CallOfferPayload
 import com.brahma.connect.core.CallState
@@ -17,6 +24,8 @@ import com.brahma.connect.ui.CallActivity
 class CallManager private constructor(private val context: Context) {
     companion object {
         private const val TAG = "CallManager"
+        private const val CHANNEL_CALLS_ID = "brahma_calls"
+        private const val CALL_NOTIFICATION_ID = 4202
 
         @Volatile
         private var instance: CallManager? = null
@@ -32,6 +41,7 @@ class CallManager private constructor(private val context: Context) {
     private var ringtone: Ringtone? = null
     private var audioEngine: VoiceCallAudioEngine? = null
     private var speechEngine: VoiceCallSpeechEngine? = null
+    private var callWakeLock: PowerManager.WakeLock? = null
 
     // Outbound callback to WebSocket client
     var onSendCallRequest: ((reason: String) -> Unit)? = null
@@ -116,21 +126,29 @@ class CallManager private constructor(private val context: Context) {
         currentOffer = offer
         AgentStateStore.setCallState(CallState.RINGING, offer)
         startRinging()
+        acquireCallWakeLock()
+        showIncomingCallNotification(offer)
 
-        // Launch CallActivity with full-screen intent
-        val intent = Intent(context, CallActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(CallActivity.EXTRA_CALL_ID, offer.callId)
-            putExtra(CallActivity.EXTRA_CALLER_NAME, offer.callerName)
-            putExtra(CallActivity.EXTRA_REASON, offer.reason)
+        // Attempt direct launch if permitted (e.g. app already in foreground)
+        try {
+            val intent = Intent(context, CallActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(CallActivity.EXTRA_CALL_ID, offer.callId)
+                putExtra(CallActivity.EXTRA_CALLER_NAME, offer.callerName)
+                putExtra(CallActivity.EXTRA_REASON, offer.reason)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct activity launch skipped; fullScreenIntent will handle notification display: ${e.message}")
         }
-        context.startActivity(intent)
         Log.i(TAG, "Incoming call offer received from ${offer.callerName}: ${offer.reason}")
     }
 
     fun acceptCall() {
         val offer = currentOffer ?: return
         stopRinging()
+        cancelIncomingCallNotification()
+        releaseCallWakeLock()
         AgentStateStore.setCallState(CallState.ACTIVE, offer)
         audioEngine?.start(enableMicRecording = false)
         speechEngine?.start()
@@ -141,6 +159,8 @@ class CallManager private constructor(private val context: Context) {
     fun rejectCall() {
         val offer = currentOffer ?: return
         stopRinging()
+        cancelIncomingCallNotification()
+        releaseCallWakeLock()
         audioEngine?.stop()
         speechEngine?.stop()
         AgentStateStore.setCallState(CallState.ENDED, offer)
@@ -153,6 +173,8 @@ class CallManager private constructor(private val context: Context) {
     fun endCall() {
         val offer = currentOffer
         stopRinging()
+        cancelIncomingCallNotification()
+        releaseCallWakeLock()
         audioEngine?.stop()
         speechEngine?.stop()
         if (offer != null) {
@@ -167,6 +189,8 @@ class CallManager private constructor(private val context: Context) {
     fun onCallEndedByRemote(callId: String) {
         if (currentOffer?.callId == callId || currentOffer == null) {
             stopRinging()
+            cancelIncomingCallNotification()
+            releaseCallWakeLock()
             audioEngine?.stop()
             speechEngine?.stop()
             currentOffer = null
@@ -174,6 +198,116 @@ class CallManager private constructor(private val context: Context) {
             AgentStateStore.setCallState(CallState.IDLE)
             Log.i(TAG, "Call terminated by remote: $callId")
         }
+    }
+
+    private fun showIncomingCallNotification(offer: CallOfferPayload) {
+        createCallNotificationChannel()
+
+        val fullScreenIntent = Intent(context, CallActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(CallActivity.EXTRA_CALL_ID, offer.callId)
+            putExtra(CallActivity.EXTRA_CALLER_NAME, offer.callerName)
+            putExtra(CallActivity.EXTRA_REASON, offer.reason)
+        }
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context,
+            101,
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val declineIntent = Intent(context, CallActionReceiver::class.java).apply {
+            action = CallActionReceiver.ACTION_DECLINE_CALL
+            putExtra(CallActionReceiver.EXTRA_CALL_ID, offer.callId)
+        }
+        val declinePendingIntent = PendingIntent.getBroadcast(
+            context,
+            102,
+            declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val answerIntent = Intent(context, CallActionReceiver::class.java).apply {
+            action = CallActionReceiver.ACTION_ANSWER_CALL
+            putExtra(CallActionReceiver.EXTRA_CALL_ID, offer.callId)
+            putExtra(CallActivity.EXTRA_CALLER_NAME, offer.callerName)
+            putExtra(CallActivity.EXTRA_REASON, offer.reason)
+        }
+        val answerPendingIntent = PendingIntent.getBroadcast(
+            context,
+            103,
+            answerIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_CALLS_ID)
+            .setSmallIcon(R.drawable.ic_brahma_launcher)
+            .setContentTitle("Incoming Call: ${offer.callerName}")
+            .setContentText(offer.reason.ifBlank { "Voice Call from JARVIS" })
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .addAction(R.drawable.ic_brahma_launcher, "Decline", declinePendingIntent)
+            .addAction(R.drawable.ic_brahma_launcher, "Answer", answerPendingIntent)
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.notify(CALL_NOTIFICATION_ID, builder.build())
+    }
+
+    private fun cancelIncomingCallNotification() {
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(CALL_NOTIFICATION_ID)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cancelling call notification: ${e.message}")
+        }
+    }
+
+    private fun createCallNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_CALLS_ID,
+                "Incoming Calls",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Incoming VoIP voice calls from JARVIS"
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
+                enableVibration(true)
+            }
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun acquireCallWakeLock() {
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            if (callWakeLock == null) {
+                @Suppress("DEPRECATION")
+                callWakeLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                    "BrahmaConnect:CallWakeLock"
+                ).apply {
+                    setReferenceCounted(false)
+                }
+            }
+            callWakeLock?.acquire(30_000L) // 30 second display wake up
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not acquire call WakeLock: ${e.message}")
+        }
+    }
+
+    private fun releaseCallWakeLock() {
+        try {
+            if (callWakeLock?.isHeld == true) {
+                callWakeLock?.release()
+            }
+        } catch (_: Exception) {}
+        callWakeLock = null
     }
 
     fun handleIncomingAudioChunk(chunkBase64: String) {

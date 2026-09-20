@@ -1,5 +1,6 @@
 package com.brahma.connect.ui
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -60,6 +61,7 @@ class CallActivity : ComponentActivity() {
         const val EXTRA_CALL_ID = "extra_call_id"
         const val EXTRA_CALLER_NAME = "extra_caller_name"
         const val EXTRA_REASON = "extra_reason"
+        const val EXTRA_AUTO_ANSWER = "extra_auto_answer"
     }
 
     private lateinit var callManager: CallManager
@@ -84,6 +86,12 @@ class CallActivity : ComponentActivity() {
 
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: "JARVIS"
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "Voice Call"
+        val autoAnswer = intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)
+
+        if (autoAnswer) {
+            android.util.Log.i("CallActivity", "Auto-answering call from notification action.")
+            callManager.acceptCall()
+        }
 
         setContent {
             BrahmaConnectTheme {
@@ -131,6 +139,16 @@ class CallActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val autoAnswer = intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)
+        if (autoAnswer) {
+            android.util.Log.i("CallActivity", "Auto-answering call from onNewIntent.")
+            callManager.acceptCall()
+        }
     }
 }
 

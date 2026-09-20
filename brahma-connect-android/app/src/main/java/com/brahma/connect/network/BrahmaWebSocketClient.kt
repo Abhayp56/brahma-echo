@@ -59,7 +59,9 @@ class BrahmaWebSocketClient(
 
     private val client = OkHttpClient.Builder()
         .retryOnConnectionFailure(true)
-        .pingInterval(30, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
     private var socket: WebSocket? = null
@@ -144,8 +146,8 @@ class BrahmaWebSocketClient(
 
         reconnectAttempt += 1
         AgentStateStore.setConnectionState(ConnectionState.RECONNECTING)
-        val baseDelay = min(30_000L, 1_000L * (1 shl min(reconnectAttempt, 5)))
-        val jitter = (Math.random() * 2000).toLong()
+        val baseDelay = min(15_000L, 1_000L * (1 shl min(reconnectAttempt, 4)))
+        val jitter = (Math.random() * 1500).toLong()
         val delayMs = baseDelay + jitter
         AgentStateStore.setStatus("Reconnecting in ${delayMs / 1000}s")
         reconnectJob?.cancel()

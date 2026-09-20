@@ -1,8 +1,10 @@
 package com.brahma.connect
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -14,6 +16,7 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.brahma.connect.commands.DeviceCommandHandler
 import com.brahma.connect.core.AgentStateStore
@@ -34,6 +37,7 @@ class BrahmaConnectForegroundService : Service() {
     private var started = false
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var isExplicitStop = false
 
     override fun onCreate() {
         super.onCreate()
@@ -61,7 +65,7 @@ class BrahmaConnectForegroundService : Service() {
         scope.launch {
             AgentStateStore.connectionState.collect {
                 updateNotification()
-                if (it == ConnectionState.CONNECTED) {
+                if (it == ConnectionState.CONNECTED || it == ConnectionState.CONNECTING || it == ConnectionState.RECONNECTING) {
                     acquireWakeLock()
                 }
             }
@@ -71,6 +75,7 @@ class BrahmaConnectForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                isExplicitStop = true
                 client.disconnect()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -209,10 +214,21 @@ class BrahmaConnectForegroundService : Service() {
     }
 
     private fun buildNotification(title: String, text: String): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_brahma_launcher)
             .setContentTitle(title)
             .setContentText(text)
+            .setContentIntent(contentPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -227,11 +243,54 @@ class BrahmaConnectForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        android.util.Log.i("BrahmaService", "App task removed from Recents. Scheduling auto-restart...")
+        if (!isExplicitStop) {
+            scheduleServiceResurrection(1000L)
+        }
+    }
+
     override fun onDestroy() {
         unregisterNetworkCallback()
         releaseWakeLock()
         client.disconnect()
+        if (!isExplicitStop) {
+            android.util.Log.w("BrahmaService", "Service destroyed unexpectedly. Scheduling resurrection...")
+            scheduleServiceResurrection(1500L)
+        }
         super.onDestroy()
+    }
+
+    private fun scheduleServiceResurrection(delayMs: Long) {
+        try {
+            val restartIntent = Intent(applicationContext, BrahmaConnectForegroundService::class.java).apply {
+                setPackage(packageName)
+            }
+            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                PendingIntent.getForegroundService(
+                    applicationContext,
+                    1,
+                    restartIntent,
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                )
+            } else {
+                PendingIntent.getService(
+                    applicationContext,
+                    1,
+                    restartIntent,
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            alarmManager?.set(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + delayMs,
+                pendingIntent
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("BrahmaService", "Could not schedule service resurrection: ${e.message}")
+        }
     }
 
     companion object {

@@ -1,9 +1,11 @@
 package com.brahma.connect.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import com.brahma.connect.accessibility.BrahmaAccessibilityService
 import androidx.camera.core.CameraSelector
@@ -679,6 +681,79 @@ private fun ConnectedScreen(
                     }
                 }
                 Text(if (isAccessRunning) "ACTIVE" else "ENABLE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF3B82F6) else androidx.compose.ui.graphics.Color(0xFFEF4444))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        // --- 24/7 Background VoIP & Battery Optimization Card ---
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isIgnoringBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+        } else true
+
+        Card(
+            onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFF0F261C).copy(alpha = 0.85f) else androidx.compose.ui.graphics.Color(0xFF38250A).copy(alpha = 0.85f),
+                contentColor = if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFF34D399) else androidx.compose.ui.graphics.Color(0xFFFBBF24)
+            ),
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.8f) else androidx.compose.ui.graphics.Color(0xFFF59E0B).copy(alpha = 0.8f))
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.25f) else androidx.compose.ui.graphics.Color(0xFFF59E0B).copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (isIgnoringBattery) "⚡" else "🔋", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            "24/7 Background VoIP",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.White
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (isIgnoringBattery) "Unrestricted Battery & Auto-Resurrect Active" else "Tap to allow unrestricted background calling",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFFA7F3D0) else androidx.compose.ui.graphics.Color(0xFFFDE68A)
+                        )
+                    }
+                }
+                Text(
+                    if (isIgnoringBattery) "OPTIMAL" else "SETUP",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 12.sp,
+                    color = if (isIgnoringBattery) androidx.compose.ui.graphics.Color(0xFF10B981) else androidx.compose.ui.graphics.Color(0xFFF59E0B)
+                )
             }
         }
         Spacer(Modifier.height(16.dp))

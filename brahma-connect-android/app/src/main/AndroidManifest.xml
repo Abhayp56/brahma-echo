@@ -58,6 +58,7 @@
         <service
             android:name=".BrahmaConnectForegroundService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
         <service
@@ -73,12 +74,18 @@
         </service>
 
         <receiver
+            android:name=".call.CallActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
     </application>
