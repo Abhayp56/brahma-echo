@@ -23,7 +23,6 @@ class VoiceCallSpeechEngine(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-    private val savedVolumes = mutableMapOf<Int, Int>()
     private var speechRecognizer: SpeechRecognizer? = null
     private var isRunning = false
     private var isPausedForPlayback = false
@@ -38,10 +37,9 @@ class VoiceCallSpeechEngine(
             isPausedForPlayback = false
             retryCount = 0
             useOnDevice = true
-            muteCallStreams()
             initRecognizer()
             startListeningInternal()
-            Log.i(TAG, "VoiceCallSpeechEngine started (Fast Turn Mode, Beeps Suppressed).")
+            Log.i(TAG, "VoiceCallSpeechEngine started (Option B: Silent On-Device Recognition; Phone Volumes Untouched).")
         }
     }
 
@@ -60,7 +58,10 @@ class VoiceCallSpeechEngine(
                 Log.w(TAG, "Error destroying SpeechRecognizer: ${e.message}")
             }
             speechRecognizer = null
-            restoreCallStreams()
+            // Ensure system stream is unmuted if any transient suppression was active
+            try {
+                audioManager?.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
+            } catch (_: Exception) {}
             Log.i(TAG, "VoiceCallSpeechEngine stopped.")
         }
     }
@@ -91,44 +92,25 @@ class VoiceCallSpeechEngine(
                     startListeningInternal()
                     Log.d(TAG, "SpeechRecognizer resumed (Listening for user).")
                 }
-            }, 100)
+            }, 150)
         }
     }
 
-    private fun muteCallStreams() {
-        if (audioManager == null) return
-        val streams = intArrayOf(
-            AudioManager.STREAM_MUSIC,
-            AudioManager.STREAM_SYSTEM,
-            AudioManager.STREAM_NOTIFICATION
-        )
-        for (s in streams) {
-            try {
-                if (!savedVolumes.containsKey(s)) {
-                    savedVolumes[s] = audioManager.getStreamVolume(s)
-                }
-                audioManager.setStreamVolume(s, 0, 0)
-            } catch (e: Exception) {
+    /**
+     * Suppresses the Google SpeechRecognizer earcon chime ("thong thong")
+     * by muting ONLY STREAM_SYSTEM for a 300ms window during startListening.
+     * Crucially, STREAM_RING, STREAM_NOTIFICATION, STREAM_ALARM, and STREAM_VOICE_CALL
+     * are 100% untouched, ensuring user phone volume settings never change!
+     */
+    private fun suppressSystemEarconBriefly() {
+        try {
+            audioManager?.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0)
+            mainHandler.postDelayed({
                 try {
-                    audioManager.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
-                } catch (e2: Exception) {
-                    // Ignore if restricted by notification policy
-                }
-            }
-        }
-    }
-
-    private fun restoreCallStreams() {
-        if (audioManager == null) return
-        for ((stream, volume) in savedVolumes) {
-            try {
-                audioManager.setStreamVolume(stream, volume, 0)
-                audioManager.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-        savedVolumes.clear()
+                    audioManager?.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
+                } catch (_: Exception) {}
+            }, 300L)
+        } catch (_: Exception) {}
     }
 
     private fun initRecognizer() {
@@ -176,23 +158,26 @@ class VoiceCallSpeechEngine(
                 // Suppress Assistant earcons via Dictation / Silent mode flags
                 putExtra("android.speech.extra.DICTATION_MODE", true)
                 putExtra("android.speech.extra.BEEP", false)
-                putExtra("android.speech.extras.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 250L)
-                putExtra("android.speech.extras.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 450L)
-                putExtra("android.speech.extras.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 450L)
+                // Balanced conversational silence lengths (1.2s minimum, 1.8s silence threshold)
+                // Prevents aggressive 450ms timeout restarts while allowing natural conversational pauses
+                putExtra("android.speech.extras.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 1200L)
+                putExtra("android.speech.extras.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 1800L)
+                putExtra("android.speech.extras.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 1800L)
                 if (useOnDevice) {
                     putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 }
-                // Fast conversational turn detection (450ms silence)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
             }
 
+            // Suppress Google "thong thong" earcon by muting ONLY STREAM_SYSTEM for 300ms
+            suppressSystemEarconBriefly()
             speechRecognizer?.startListening(intent)
             isListeningNow = true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to startListening: ${e.message}")
-            scheduleRestart(500)
+            scheduleRestart(600)
         }
     }
 
@@ -255,10 +240,10 @@ class VoiceCallSpeechEngine(
                     useOnDevice = false
                 }
                 initRecognizer()
-                scheduleRestart(250)
+                scheduleRestart(400)
             } else {
                 // For NO_MATCH / SPEECH_TIMEOUT, silence is normal when waiting for user to speak
-                scheduleRestart(150)
+                scheduleRestart(350)
             }
         }
 
@@ -272,9 +257,9 @@ class VoiceCallSpeechEngine(
                 onSpeechRecognized(recognizedText)
             }
 
-            // Immediately restart listening so the call is hands-free
+            // Smooth restart delay after user finishes speaking
             if (isRunning && !isPausedForPlayback) {
-                scheduleRestart(100)
+                scheduleRestart(250)
             }
         }
 

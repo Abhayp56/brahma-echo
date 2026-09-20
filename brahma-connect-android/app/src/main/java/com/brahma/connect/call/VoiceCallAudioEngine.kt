@@ -105,8 +105,8 @@ class VoiceCallAudioEngine(
 
             mainHandler.removeCallbacks(finishPlaybackRunnable)
             onPlaybackStarted?.invoke()
-            // If no more chunks arrive within 350ms, JARVIS finished speaking this chunk sequence
-            mainHandler.postDelayed(finishPlaybackRunnable, 350L)
+            // 750ms buffer prevents network jitter between audio chunks from false-triggering speech recognition mid-sentence
+            mainHandler.postDelayed(finishPlaybackRunnable, 750L)
         } catch (e: Exception) {
             Log.w(TAG, "Error playing incoming audio chunk: ${e.message}")
         }
