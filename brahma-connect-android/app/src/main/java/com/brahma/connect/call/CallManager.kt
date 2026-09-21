@@ -56,13 +56,6 @@ class CallManager private constructor(private val context: Context) {
             currentOffer?.let { offer ->
                 onSendCallAudio?.invoke(offer.callId, chunkBase64)
             }
-        }.apply {
-            onPlaybackStarted = {
-                speechEngine?.pauseListening()
-            }
-            onPlaybackFinished = {
-                speechEngine?.resumeListening()
-            }
         }
 
         speechEngine = VoiceCallSpeechEngine(
@@ -102,8 +95,7 @@ class CallManager private constructor(private val context: Context) {
         }
         context.startActivity(intent)
 
-        audioEngine?.start(enableMicRecording = false)
-        speechEngine?.start()
+        audioEngine?.start(enableMicRecording = true)
 
         onSendCallRequest?.invoke(reason)
         Log.i(TAG, "Outbound call started to JARVIS: $callId (reason: $reason)")
@@ -150,8 +142,7 @@ class CallManager private constructor(private val context: Context) {
         cancelIncomingCallNotification()
         releaseCallWakeLock()
         AgentStateStore.setCallState(CallState.ACTIVE, offer)
-        audioEngine?.start(enableMicRecording = false)
-        speechEngine?.start()
+        audioEngine?.start(enableMicRecording = true)
         onSendCallAnswer?.invoke(offer.callId)
         Log.i(TAG, "Call accepted: ${offer.callId}")
     }
@@ -318,16 +309,10 @@ class CallManager private constructor(private val context: Context) {
 
     fun handleTurnComplete() {
         audioEngine?.notifyTurnComplete()
-        speechEngine?.resumeListening()
     }
 
     fun setMuted(muted: Boolean) {
         audioEngine?.setMuted(muted)
-        if (muted) {
-            speechEngine?.pauseListening()
-        } else {
-            speechEngine?.resumeListening()
-        }
     }
 
     fun setSpeakerphoneOn(speakerOn: Boolean) {

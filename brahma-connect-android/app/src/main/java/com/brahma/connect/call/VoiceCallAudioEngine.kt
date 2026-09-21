@@ -18,6 +18,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -45,12 +46,13 @@ class VoiceCallAudioEngine(
     private var echoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
 
+    private val audioTrackLock = Any()
     private var recordingJob: Job? = null
     private val engineScope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
     private var isMuted = false
 
-    fun start(enableMicRecording: Boolean = false) {
+    fun start(enableMicRecording: Boolean = true) {
         if (isRunning) return
         isRunning = true
         setupAudioRouting()
@@ -58,9 +60,9 @@ class VoiceCallAudioEngine(
         if (enableMicRecording) {
             setupAudioRecord()
             startRecordingLoop()
-            Log.i(TAG, "VoiceCallAudioEngine started with raw mic recording enabled.")
+            Log.i(TAG, "VoiceCallAudioEngine started with raw mic recording enabled (Full-Duplex VoIP mode).")
         } else {
-            Log.i(TAG, "VoiceCallAudioEngine started (Playback track & routing active; mic 100% dedicated to speech engine).")
+            Log.i(TAG, "VoiceCallAudioEngine started (Playback track & routing active).")
         }
     }
 
@@ -78,18 +80,25 @@ class VoiceCallAudioEngine(
         }
         audioRecord = null
 
-        try {
-            audioTrack?.stop()
-            audioTrack?.flush()
-            audioTrack?.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error stopping AudioTrack: ${e.message}")
+        synchronized(audioTrackLock) {
+            try {
+                audioTrack?.stop()
+                audioTrack?.flush()
+                audioTrack?.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping AudioTrack: ${e.message}")
+            }
+            audioTrack = null
         }
-        audioTrack = null
 
-        echoCanceler?.release()
+        try {
+            echoCanceler?.release()
+        } catch (_: Exception) {}
         echoCanceler = null
-        noiseSuppressor?.release()
+
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Exception) {}
         noiseSuppressor = null
 
         restoreAudioRouting()
@@ -101,11 +110,15 @@ class VoiceCallAudioEngine(
         if (!isRunning) return
         try {
             val pcmBytes = Base64.decode(base64Data, Base64.DEFAULT)
-            audioTrack?.write(pcmBytes, 0, pcmBytes.size)
+            synchronized(audioTrackLock) {
+                if (isRunning) {
+                    audioTrack?.write(pcmBytes, 0, pcmBytes.size)
+                }
+            }
 
             mainHandler.removeCallbacks(finishPlaybackRunnable)
             onPlaybackStarted?.invoke()
-            // 750ms buffer prevents network jitter between audio chunks from false-triggering speech recognition mid-sentence
+            // 750ms buffer prevents network jitter between audio chunks from false-triggering end of turn
             mainHandler.postDelayed(finishPlaybackRunnable, 750L)
         } catch (e: Exception) {
             Log.w(TAG, "Error playing incoming audio chunk: ${e.message}")
@@ -237,15 +250,29 @@ class VoiceCallAudioEngine(
                 )
             }
 
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord failed to initialize in both VOICE_COMMUNICATION and MIC modes!")
+                record.release()
+                return
+            }
+
             val sessionId = record.audioSessionId
             if (AcousticEchoCanceler.isAvailable()) {
-                echoCanceler = AcousticEchoCanceler.create(sessionId)?.apply {
-                    enabled = true
+                try {
+                    echoCanceler = AcousticEchoCanceler.create(sessionId)?.apply {
+                        enabled = true
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not create AcousticEchoCanceler: ${e.message}")
                 }
             }
             if (NoiseSuppressor.isAvailable()) {
-                noiseSuppressor = NoiseSuppressor.create(sessionId)?.apply {
-                    enabled = true
+                try {
+                    noiseSuppressor = NoiseSuppressor.create(sessionId)?.apply {
+                        enabled = true
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not create NoiseSuppressor: ${e.message}")
                 }
             }
 
@@ -268,6 +295,11 @@ class VoiceCallAudioEngine(
                     val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
                     val base64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
                     onAudioChunkRecorded(base64)
+                } else if (read <= 0) {
+                    if (read < 0) {
+                        Log.w(TAG, "AudioRecord read error code: $read")
+                    }
+                    delay(20)
                 }
             }
         }
