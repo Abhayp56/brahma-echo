@@ -96,5 +96,10 @@ object BrahmaConnectCapabilities {
         "open_url",
         "wifi_state",
         "voice_call",
+        "notifications",
+        "call_log",
+        "media_control",
+        "screen_lock",
+        "dnd_control",
     )
 }

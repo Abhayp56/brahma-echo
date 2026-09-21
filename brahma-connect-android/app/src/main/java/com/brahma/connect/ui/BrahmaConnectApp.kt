@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import com.brahma.connect.accessibility.BrahmaAccessibilityService
+import com.brahma.connect.notifications.BrahmaNotificationListenerService
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -110,6 +111,8 @@ fun HolographicBackground() {
 fun BrahmaConnectApp(
     onRequestCameraPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onRequestCallLogPermission: () -> Unit = {},
+    onOpenNotificationListenerSettings: () -> Unit = {},
     onStartService: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -681,6 +684,59 @@ private fun ConnectedScreen(
                     }
                 }
                 Text(if (isAccessRunning) "ACTIVE" else "ENABLE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = if (isAccessRunning) androidx.compose.ui.graphics.Color(0xFF3B82F6) else androidx.compose.ui.graphics.Color(0xFFEF4444))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        // --- Notification Intelligence Status & Setup Card ---
+        val isNotifRunning = BrahmaNotificationListenerService.instance != null || BrahmaNotificationListenerService.isPermissionGranted(context)
+        Card(
+            onClick = {
+                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFF2E1A47).copy(alpha = 0.85f) else androidx.compose.ui.graphics.Color(0xFF381515).copy(alpha = 0.85f),
+                contentColor = if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFFC084FC) else androidx.compose.ui.graphics.Color(0xFFF87171)
+            ),
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFFA855F7).copy(alpha = 0.8f) else androidx.compose.ui.graphics.Color(0xFFEF4444).copy(alpha = 0.8f))
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFFA855F7).copy(alpha = 0.25f) else androidx.compose.ui.graphics.Color(0xFFEF4444).copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (isNotifRunning) "🔔" else "🔕", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            "Notification Intelligence",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.White
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (isNotifRunning) "Capturing WhatsApp, Gmail & System Alerts" else "Tap to Grant Notification Access",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFFE9D5FF) else androidx.compose.ui.graphics.Color(0xFFFCA5A5)
+                        )
+                    }
+                }
+                Text(if (isNotifRunning) "ACTIVE" else "ENABLE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = if (isNotifRunning) androidx.compose.ui.graphics.Color(0xFFA855F7) else androidx.compose.ui.graphics.Color(0xFFEF4444))
             }
         }
         Spacer(Modifier.height(16.dp))

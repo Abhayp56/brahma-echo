@@ -58,6 +58,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val callLogPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            AgentStateStore.addLog("Call log permission granted for JARVIS")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         storage = PairingStorage(this)
@@ -94,6 +100,7 @@ class MainActivity : ComponentActivity() {
         ensureAudioPermission()
         ensureContactsPermission()
         ensureLocationPermission()
+        ensureCallLogPermission()
         ensureBatteryOptimizationExemption()
         setContent {
             BrahmaConnectTheme {
@@ -103,6 +110,19 @@ class MainActivity : ComponentActivity() {
                     },
                     onRequestNotificationPermission = {
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    },
+                    onRequestCallLogPermission = {
+                        callLogPermission.launch(Manifest.permission.READ_CALL_LOG)
+                    },
+                    onOpenNotificationListenerSettings = {
+                        try {
+                            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            android.util.Log.w("MainActivity", "Failed to open notification listener settings: ${e.message}")
+                        }
                     },
                     onStartService = { maybeStartService() },
                 )
@@ -147,6 +167,12 @@ class MainActivity : ComponentActivity() {
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) {
             locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
+
+    private fun ensureCallLogPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            callLogPermission.launch(Manifest.permission.READ_CALL_LOG)
         }
     }
 

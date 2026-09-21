@@ -20,6 +20,9 @@ class TestPhoneHubCommands(unittest.IsolatedAsyncioTestCase):
         self.assertIn("text", tool["parameters"]["properties"])
         self.assertIn("contact", tool["parameters"]["properties"])
         self.assertIn("query", tool["parameters"]["properties"])
+        self.assertIn("media_action", tool["parameters"]["properties"])
+        self.assertIn("limit", tool["parameters"]["properties"])
+        self.assertIn("enabled", tool["parameters"]["properties"])
 
     async def test_execute_phone_command_disconnected(self):
         res = await self.hub.execute_phone_command("see_screen", {})

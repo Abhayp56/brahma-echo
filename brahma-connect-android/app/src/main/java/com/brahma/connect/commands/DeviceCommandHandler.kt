@@ -33,9 +33,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLEncoder
+import com.brahma.connect.media.UniversalMediaController
+import com.brahma.connect.notifications.BrahmaNotificationListenerService
+import com.brahma.connect.notifications.NotificationStore
+import com.brahma.connect.telephony.CallLogReader
 
 class DeviceCommandHandler(private val context: Context) {
     private val infoProvider = AndroidDeviceInfoProvider(context)
+    private val mediaController = UniversalMediaController(context)
+    private val callLogReader = CallLogReader(context)
     private val scope = CoroutineScope(Dispatchers.IO)
 
     fun handle(action: String, parameters: Map<String, Any?>): CommandResult {
@@ -49,12 +55,21 @@ class DeviceCommandHandler(private val context: Context) {
             "tap_coordinates" -> tapCoordinates(parameters)
             "press_key" -> pressKey(parameters)
 
+            // Notifications Intelligence
+            "get_notifications", "summarize_notifications", "read_notifications" -> getNotifications(parameters)
+            "clear_notifications" -> clearNotifications()
+
             // App Automation
             "send_whatsapp", "send_whatsapp_message" -> sendWhatsApp(parameters)
             "play_media", "play_music", "play_youtube" -> playMedia(parameters)
+            "media_control" -> mediaControl(parameters)
+            "now_playing", "get_now_playing" -> getNowPlaying()
+            "stop_everything", "emergency_stop" -> stopEverything()
 
             // Phone Telephony & Comms
             "make_call", "make_phone_call", "dial" -> makeCall(parameters)
+            "get_missed_calls", "missed_calls" -> getMissedCalls(parameters)
+            "get_call_log", "read_call_log", "recent_calls" -> getCallLog(parameters)
             "send_sms" -> sendSms(parameters)
             "read_sms", "audit_sms_inbox" -> readSms(parameters)
             "read_contacts", "search_contacts", "get_contacts" -> readContacts(parameters)
@@ -79,6 +94,8 @@ class DeviceCommandHandler(private val context: Context) {
             "volume_get" -> volumeGet()
             "volume_set" -> volumeSet(parameters)
             "unlock_phone" -> unlockPhone(parameters)
+            "lock_phone", "lock_screen" -> lockPhone()
+            "set_dnd", "toggle_dnd" -> setDnd(parameters)
 
             // Storage & Files
             "file_list" -> fileList(parameters)
@@ -823,5 +840,155 @@ class DeviceCommandHandler(private val context: Context) {
         } catch (e: Exception) {
             CommandResult(false, errorCode = "DELETE_ERROR", error = e.message ?: "Failed to delete file.")
         }
+    }
+
+    // ==========================================================
+    // NOTIFICATION INTELLIGENCE
+    // ==========================================================
+
+    private fun getNotifications(parameters: Map<String, Any?>): CommandResult {
+        val limit = (parameters["limit"] as? Number)?.toInt() ?: 20
+        val packageFilter = parameters["package"]?.toString() ?: parameters["app"]?.toString()
+        val includeOngoing = parameters["include_ongoing"] as? Boolean ?: false
+
+        val listenerActive = BrahmaNotificationListenerService.instance != null
+        val permissionGranted = BrahmaNotificationListenerService.isPermissionGranted(context)
+
+        if (!permissionGranted && !listenerActive) {
+            return CommandResult(
+                false,
+                errorCode = "NOTIFICATION_ACCESS_DISABLED",
+                error = "Notification access is not enabled. Please enable Brahma Connect in Android Settings -> Notification Access."
+            )
+        }
+
+        // Sync active notifications if listener is bound
+        BrahmaNotificationListenerService.instance?.syncActiveNotifications()
+
+        val recent = NotificationStore.getRecent(
+            limit = limit,
+            packageFilter = packageFilter,
+            excludeOngoing = !includeOngoing
+        ).map { it.toMap() }
+
+        return CommandResult(
+            true,
+            data = mapOf(
+                "count" to recent.size,
+                "notifications" to recent,
+                "listener_active" to listenerActive
+            )
+        )
+    }
+
+    private fun clearNotifications(): CommandResult {
+        NotificationStore.clear()
+        return CommandResult(true, data = mapOf("message" to "Notification history cleared."))
+    }
+
+    // ==========================================================
+    // CALL LOG & TELEPHONY
+    // ==========================================================
+
+    private fun getMissedCalls(parameters: Map<String, Any?>): CommandResult {
+        if (!callLogReader.hasPermission()) {
+            return CommandResult(
+                false,
+                errorCode = "PERMISSION_DENIED",
+                error = "Call Log permission (READ_CALL_LOG) is required to check missed calls."
+            )
+        }
+        val limit = (parameters["limit"] as? Number)?.toInt() ?: 10
+        val missed = callLogReader.getMissedCalls(limit)
+        return CommandResult(
+            true,
+            data = mapOf(
+                "count" to missed.size,
+                "missed_calls" to missed
+            )
+        )
+    }
+
+    private fun getCallLog(parameters: Map<String, Any?>): CommandResult {
+        if (!callLogReader.hasPermission()) {
+            return CommandResult(
+                false,
+                errorCode = "PERMISSION_DENIED",
+                error = "Call Log permission (READ_CALL_LOG) is required to view call history."
+            )
+        }
+        val limit = (parameters["limit"] as? Number)?.toInt() ?: 15
+        val type = parameters["type"]?.toString()
+        val calls = callLogReader.getRecentCalls(limit, type)
+        return CommandResult(
+            true,
+            data = mapOf(
+                "count" to calls.size,
+                "calls" to calls
+            )
+        )
+    }
+
+    // ==========================================================
+    // UNIVERSAL MEDIA CONTROLLER & STOP EVERYTHING
+    // ==========================================================
+
+    private fun mediaControl(parameters: Map<String, Any?>): CommandResult {
+        val mediaAction = (parameters["media_action"] ?: parameters["sub_action"] ?: parameters["action"])?.toString() ?: "toggle"
+        val success = mediaController.executeAction(mediaAction)
+        val nowPlaying = mediaController.getNowPlaying()
+        return CommandResult(
+            success,
+            data = mapOf(
+                "action" to mediaAction,
+                "now_playing" to nowPlaying
+            )
+        )
+    }
+
+    private fun getNowPlaying(): CommandResult {
+        val info = mediaController.getNowPlaying()
+        return CommandResult(true, data = info)
+    }
+
+    private fun stopEverything(): CommandResult {
+        val res = mediaController.stopEverything()
+        return CommandResult(true, data = res)
+    }
+
+    private fun lockPhone(): CommandResult {
+        val service = BrahmaAccessibilityService.instance
+            ?: return CommandResult(false, errorCode = "ACCESSIBILITY_DISABLED", error = "Accessibility service is disabled.")
+        val res = service.pressKey("lock")
+        return CommandResult(res["success"] as? Boolean ?: false, data = mapOf("message" to "Phone locked."))
+    }
+
+    private fun setDnd(parameters: Map<String, Any?>): CommandResult {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return CommandResult(false, errorCode = "DND_UNAVAILABLE", error = "Notification manager unavailable.")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !nm.isNotificationPolicyAccessGranted) {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return CommandResult(
+                false,
+                errorCode = "DND_ACCESS_REQUIRED",
+                error = "DND policy access is required. Settings screen has been opened."
+            )
+        }
+
+        val enable = when (val v = parameters["enable"] ?: parameters["enabled"] ?: parameters["state"]) {
+            is Boolean -> v
+            is String -> v.lowercase().trim() in listOf("true", "on", "yes", "enable", "1", "silent")
+            else -> true
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val filter = if (enable) NotificationManager.INTERRUPTION_FILTER_PRIORITY else NotificationManager.INTERRUPTION_FILTER_ALL
+            nm.setInterruptionFilter(filter)
+        }
+        return CommandResult(true, data = mapOf("dnd_enabled" to enable))
     }
 }

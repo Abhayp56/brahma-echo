@@ -494,6 +494,46 @@ class CloudBrain:
                         msg = "\n".join(summary_lines)
                     elif action == "get_screen_text":
                         msg = f"Screen Text:\n{data.get('screen_text', 'No text')}"
+                    elif action in ["get_notifications", "summarize_notifications", "read_notifications"]:
+                        notifications = data.get("notifications", [])
+                        if not notifications:
+                            msg = "There are no recent unread notifications on your phone."
+                        else:
+                            lines = [f"Found {len(notifications)} recent notification(s):"]
+                            for n in notifications[:15]:
+                                lines.append(f"- [{n.get('app_name')}] {n.get('title')}: {n.get('text')}")
+                            msg = "\n".join(lines)
+                    elif action in ["get_missed_calls", "missed_calls"]:
+                        missed = data.get("missed_calls", [])
+                        if not missed:
+                            msg = "You have no missed calls on your phone."
+                        else:
+                            lines = [f"You have {len(missed)} missed call(s):"]
+                            for c in missed[:10]:
+                                lines.append(f"- Missed call from {c.get('name')} ({c.get('number')}) at {c.get('date')}")
+                            msg = "\n".join(lines)
+                    elif action in ["get_call_log", "read_call_log", "recent_calls"]:
+                        calls = data.get("calls", [])
+                        if not calls:
+                            msg = "Call log is empty or unavailable."
+                        else:
+                            lines = [f"Recent call log ({len(calls)} entries):"]
+                            for c in calls[:10]:
+                                lines.append(f"- {c.get('type').capitalize()} call: {c.get('name')} ({c.get('number')}) at {c.get('date')}")
+                            msg = "\n".join(lines)
+                    elif action in ["media_control", "now_playing", "get_now_playing"]:
+                        np = data.get("now_playing") or data
+                        if np.get("is_playing"):
+                            msg = f"Now playing: \"{np.get('title')}\" by {np.get('artist', 'Unknown Artist')} (App: {np.get('package', 'Media Player')})."
+                        else:
+                            msg = f"Media state: No active playback. (Title: {np.get('title', 'None')})"
+                    elif action in ["stop_everything", "emergency_stop"]:
+                        msg = "Sir, all media playback has been paused, actions halted, and active tasks stopped."
+                    elif action in ["lock_phone", "lock_screen"]:
+                        msg = "Phone screen locked successfully."
+                    elif action in ["set_dnd", "toggle_dnd"]:
+                        enabled = data.get("dnd_enabled", True)
+                        msg = f"Do Not Disturb has been turned {'ON' if enabled else 'OFF'}."
                     elif action in ["send_whatsapp", "send_whatsapp_message"]:
                         msg = f"WhatsApp message successfully dispatched to {data.get('contact', 'contact')} ({data.get('phone')}). Message: \"{data.get('message')}\"."
                     elif action == "play_media":
