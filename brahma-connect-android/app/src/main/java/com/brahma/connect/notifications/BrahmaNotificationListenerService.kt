@@ -5,10 +5,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 
 /**
  * BrahmaNotificationListenerService
@@ -25,9 +27,16 @@ class BrahmaNotificationListenerService : NotificationListenerService() {
             private set
 
         fun isPermissionGranted(context: Context): Boolean {
-            val componentName = ComponentName(context, BrahmaNotificationListenerService::class.java)
-            val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-            return flat != null && flat.contains(componentName.flattenToString())
+            return try {
+                val enabled = NotificationManagerCompat.getEnabledListenerPackages(context)
+                if (enabled.contains(context.packageName)) return true
+
+                val componentName = ComponentName(context, BrahmaNotificationListenerService::class.java)
+                val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+                flat != null && flat.contains(componentName.flattenToString())
+            } catch (e: Throwable) {
+                false
+            }
         }
     }
 
@@ -35,8 +44,11 @@ class BrahmaNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         instance = this
         Log.i(TAG, "Brahma Notification Listener connected successfully.")
-        // Sync currently active notifications on connect
-        syncActiveNotifications()
+        try {
+            syncActiveNotifications()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error in onListenerConnected sync: ${e.message}")
+        }
     }
 
     override fun onListenerDisconnected() {
@@ -53,23 +65,35 @@ class BrahmaNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
-        processStatusBarNotification(sbn)
+        try {
+            processStatusBarNotification(sbn)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error processing onNotificationPosted: ${e.message}")
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         super.onNotificationRemoved(sbn)
         if (sbn == null) return
-        val key = sbn.key ?: "${sbn.packageName}_${sbn.id}"
-        NotificationStore.remove(key)
+        try {
+            val key = sbn.key ?: "${sbn.packageName}_${sbn.id}"
+            NotificationStore.remove(key)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error in onNotificationRemoved: ${e.message}")
+        }
     }
 
     fun syncActiveNotifications() {
         try {
             val active = activeNotifications ?: return
             for (sbn in active) {
-                processStatusBarNotification(sbn)
+                try {
+                    processStatusBarNotification(sbn)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Error syncing individual notification: ${e.message}")
+                }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Error syncing active notifications: ${e.message}")
         }
     }
@@ -83,47 +107,77 @@ class BrahmaNotificationListenerService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        // Extract titles and messages
-        val titleCharSeq = extras.getCharSequence(Notification.EXTRA_TITLE)
-            ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)
-        val textCharSeq = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-            ?: extras.getCharSequence(Notification.EXTRA_TEXT)
-            ?: extras.getCharSequence(Notification.EXTRA_MESSAGES)
-        val subTextCharSeq = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)
-            ?: extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)
+        try {
+            // Safely extract titles without ClassCastException
+            val title = try {
+                extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+                    ?: ""
+            } catch (e: Throwable) {
+                ""
+            }
 
-        val title = titleCharSeq?.toString()?.trim().orEmpty()
-        val text = textCharSeq?.toString()?.trim().orEmpty()
-        val subText = subTextCharSeq?.toString()?.trim()
+            // Safely extract text
+            var text = try {
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                    ?: ""
+            } catch (e: Throwable) {
+                ""
+            }
 
-        // Skip empty or purely blank noise notifications
-        if (title.isBlank() && text.isBlank()) return
+            val subText = try {
+                extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()
+            } catch (e: Throwable) {
+                null
+            }
 
-        val isOngoing = sbn.isOngoing || (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
+            // Handle MessagingStyle (WhatsApp, Telegram, Signal) safely
+            if (text.isBlank()) {
+                try {
+                    val messages = extras.get(Notification.EXTRA_MESSAGES) as? Array<*>
+                    if (messages != null && messages.isNotEmpty()) {
+                        val lastBundle = messages.lastOrNull() as? Bundle
+                        val msgText = lastBundle?.getCharSequence("text")?.toString()
+                        if (!msgText.isNullOrBlank()) {
+                            text = msgText
+                        }
+                    }
+                } catch (ignored: Throwable) {}
+            }
 
-        val appName = try {
-            val appInfo = packageManager.getApplicationInfo(pkg, 0)
-            packageManager.getApplicationLabel(appInfo).toString()
-        } catch (e: PackageManager.NameNotFoundException) {
-            pkg.substringAfterLast('.')
+            // Skip empty or purely blank noise notifications
+            if (title.isBlank() && text.isBlank()) return
+
+            val isOngoing = sbn.isOngoing || (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
+
+            val appName = try {
+                val appInfo = packageManager.getApplicationInfo(pkg, 0)
+                packageManager.getApplicationLabel(appInfo).toString()
+            } catch (e: Throwable) {
+                pkg.substringAfterLast('.')
+            }
+
+            val key = sbn.key ?: "${pkg}_${sbn.id}"
+            val category = notification.category
+
+            val deviceNotification = DeviceNotification(
+                key = key,
+                packageName = pkg,
+                appName = appName,
+                title = title.trim(),
+                text = text.trim(),
+                subText = subText?.trim(),
+                timestamp = sbn.postTime,
+                isOngoing = isOngoing,
+                category = category,
+            )
+
+            NotificationStore.add(deviceNotification)
+            Log.d(TAG, "Captured notification from $appName: \"$title\" - \"$text\"")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Unexpected error in processStatusBarNotification: ${e.message}")
         }
-
-        val key = sbn.key ?: "${pkg}_${sbn.id}"
-        val category = notification.category
-
-        val deviceNotification = DeviceNotification(
-            key = key,
-            packageName = pkg,
-            appName = appName,
-            title = title,
-            text = text,
-            subText = subText,
-            timestamp = sbn.postTime,
-            isOngoing = isOngoing,
-            category = category,
-        )
-
-        NotificationStore.add(deviceNotification)
-        Log.d(TAG, "Captured notification from $appName: \"$title\" - \"$text\"")
     }
 }

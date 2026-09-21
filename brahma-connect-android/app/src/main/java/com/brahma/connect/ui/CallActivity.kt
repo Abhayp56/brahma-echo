@@ -1,11 +1,15 @@
 package com.brahma.connect.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -35,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,13 +50,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.brahma.connect.call.CallManager
+import com.brahma.connect.camera.CameraVisionStreamer
 import com.brahma.connect.core.AgentStateStore
 import com.brahma.connect.core.CallState
 import com.brahma.connect.ui.theme.BrahmaConnectTheme
@@ -65,12 +76,21 @@ class CallActivity : ComponentActivity() {
     }
 
     private lateinit var callManager: CallManager
+    private var visionStreamer: CameraVisionStreamer? = null
 
     private val requestMicPermission = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             android.util.Log.i("CallActivity", "Microphone permission granted.")
+        }
+    }
+
+    private val requestCameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            android.util.Log.i("CallActivity", "Camera permission granted for vision.")
         }
     }
 
@@ -108,17 +128,36 @@ class CallActivity : ComponentActivity() {
                     callerName = callerName,
                     reason = reason,
                     callState = callState,
+                    hasCameraPermission = ContextCompat.checkSelfPermission(this@CallActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+                    onRequestCameraPermission = {
+                        requestCameraPermission.launch(Manifest.permission.CAMERA)
+                    },
+                    onStartVision = { previewView ->
+                        visionStreamer = CameraVisionStreamer(this@CallActivity, this@CallActivity) { b64Jpeg ->
+                            callManager.sendVisionFrame(b64Jpeg)
+                        }
+                        visionStreamer?.start(previewView)
+                    },
+                    onStopVision = {
+                        visionStreamer?.stop()
+                        visionStreamer = null
+                    },
+                    onSwitchCamera = {
+                        visionStreamer?.switchCamera()
+                    },
                     onAccept = {
-                        if (androidx.core.content.ContextCompat.checkSelfPermission(this@CallActivity, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                            requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        if (ContextCompat.checkSelfPermission(this@CallActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
                         }
                         callManager.acceptCall()
                     },
                     onReject = {
+                        visionStreamer?.stop()
                         callManager.rejectCall()
                         finish()
                     },
                     onEnd = {
+                        visionStreamer?.stop()
                         callManager.endCall()
                         finish()
                     },
@@ -150,6 +189,12 @@ class CallActivity : ComponentActivity() {
             callManager.acceptCall()
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        visionStreamer?.stop()
+        visionStreamer = null
+    }
 }
 
 @Composable
@@ -157,6 +202,11 @@ fun CallScreenContent(
     callerName: String,
     reason: String,
     callState: CallState,
+    hasCameraPermission: Boolean,
+    onRequestCameraPermission: () -> Unit,
+    onStartVision: (PreviewView) -> Unit,
+    onStopVision: () -> Unit,
+    onSwitchCamera: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onEnd: () -> Unit,
@@ -165,7 +215,14 @@ fun CallScreenContent(
 ) {
     var isMuted by remember { mutableStateOf(false) }
     var isSpeakerOn by remember { mutableStateOf(true) }
+    var isVisionActive by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onStopVision()
+        }
+    }
 
     LaunchedEffect(callState) {
         if (callState == CallState.ACTIVE) {
@@ -219,63 +276,102 @@ fun CallScreenContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = reason,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        color = Color(0xFFF4B400)
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = when (callState) {
-                        CallState.RINGING -> "Incoming Call..."
-                        CallState.ACTIVE -> {
-                            val mins = callSeconds / 60
-                            val secs = callSeconds % 60
-                            String.format("%02d:%02d", mins, secs)
-                        }
-                        CallState.ENDED -> "Call Ended"
-                        else -> "Connecting..."
-                    },
-                    style = MaterialTheme.typography.bodyMedium.copy(
+                    text = if (callState == CallState.ACTIVE) {
+                        val mins = callSeconds / 60
+                        val secs = callSeconds % 60
+                        String.format("%02d:%02d", mins, secs)
+                    } else reason,
+                    style = MaterialTheme.typography.bodyLarge.copy(
                         color = Color(0xFF8E949D)
                     )
                 )
             }
 
-            // Glowing Orb / Avatar
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(180.dp)
-                    .scale(if (callState == CallState.RINGING || callState == CallState.ACTIVE) pulseScale else 1f)
-            ) {
+            // Center Area: Camera Viewfinder OR Glowing Orb
+            if (isVisionActive && callState == CallState.ACTIVE) {
                 Box(
                     modifier = Modifier
-                        .size(160.dp)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFF4B400).copy(alpha = 0.35f),
-                                    Color(0xFFF4B400).copy(alpha = 0.05f),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
+                        .size(240.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .border(2.5.dp, Color(0xFF22C55E), RoundedCornerShape(28.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).also { pv ->
+                                onStartVision(pv)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Flip camera overlay button
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                    ) {
+                        Surface(
+                            onClick = onSwitchCamera,
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.65f),
+                            contentColor = Color.White,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🔄", fontSize = 18.sp)
+                            }
+                        }
+                    }
+
+                    // Live badge overlay
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(10.dp)
+                            .background(Color(0xFF22C55E).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("LIVE VISION", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            } else {
+                // Glowing Orb / Avatar
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(110.dp)
-                        .background(Color(0xFF10131A), shape = CircleShape)
-                        .border(2.dp, Color(0xFFF4B400), CircleShape)
+                        .size(180.dp)
+                        .scale(if (callState == CallState.RINGING || callState == CallState.ACTIVE) pulseScale else 1f)
                 ) {
-                    Text(
-                        text = "A",
-                        fontSize = 44.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF4B400)
+                    Box(
+                        modifier = Modifier
+                            .size(160.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFF4B400).copy(alpha = 0.35f),
+                                        Color(0xFFF4B400).copy(alpha = 0.05f),
+                                        Color.Transparent
+                                    )
+                                ),
+                                shape = CircleShape
+                            )
                     )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(110.dp)
+                            .background(Color(0xFF10131A), shape = CircleShape)
+                            .border(2.dp, Color(0xFFF4B400), CircleShape)
+                    ) {
+                        Text(
+                            text = "A",
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF4B400)
+                        )
+                    }
                 }
             }
 
@@ -379,6 +475,35 @@ fun CallScreenContent(
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold
                                     )
+                                }
+                            }
+
+                            // Vision Toggle button
+                            Surface(
+                                onClick = {
+                                    if (!isVisionActive && !hasCameraPermission) {
+                                        onRequestCameraPermission()
+                                    } else {
+                                        isVisionActive = !isVisionActive
+                                        if (!isVisionActive) {
+                                            onStopVision()
+                                        }
+                                    }
+                                },
+                                shape = CircleShape,
+                                color = if (isVisionActive) Color(0xFF22C55E) else Color(0xFF1E222D),
+                                contentColor = if (isVisionActive) Color.Black else Color.White,
+                                modifier = Modifier.size(64.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(if (isVisionActive) "👁️" else "📷", fontSize = 16.sp)
+                                        Text(
+                                            text = if (isVisionActive) "VISION ON" else "VISION",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }

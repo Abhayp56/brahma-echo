@@ -85,6 +85,39 @@ class TestPhoneHubCommands(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["error_code"], "PHONE_DISCONNECTED")
         self.assertEqual(len(self.hub.pending_commands), 0)
 
+    async def test_tools_schema_contains_phase_2_actions(self):
+        tool = next((t for t in TOOL_DECLARATIONS if t.get("name") == "phone_hub_control"), None)
+        self.assertIsNotNone(tool)
+        action_desc = tool["parameters"]["properties"]["action"]["description"]
+        self.assertIn("analyze_screen", action_desc)
+        self.assertIn("capture_screen_image", action_desc)
+        self.assertIn("open_camera", action_desc)
+
+    async def test_execute_capture_screen_image(self):
+        mock_ws = AsyncMock()
+        self.hub.register_phone(mock_ws, {"name": "Test Pixel 8"})
+
+        async def simulate_screen_response():
+            await asyncio.sleep(0.05)
+            req_id = next(iter(self.hub.pending_commands.keys()))
+            fut = self.hub.pending_commands[req_id]
+            fut.set_result({
+                "success": True,
+                "data": {
+                    "image": "aGVsbG8=",
+                    "mime_type": "image/jpeg",
+                    "width": 1080,
+                    "height": 2400
+                }
+            })
+
+        asyncio.create_task(simulate_screen_response())
+        res = await self.hub.execute_phone_command("capture_screen_image", {}, timeout=2.0)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["data"]["mime_type"], "image/jpeg")
+        self.assertEqual(res["data"]["width"], 1080)
+
 
 if __name__ == "__main__":
     unittest.main()
+

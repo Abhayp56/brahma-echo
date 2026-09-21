@@ -55,6 +55,9 @@ class BrahmaWebSocketClient(
         callManager.onSendCallSpeechText = { callId, text ->
             send(BrahmaProtocol.callSpeechText(callId, text))
         }
+        callManager.onSendCallVisionFrame = { callId, base64Jpeg ->
+            send(BrahmaProtocol.callVisionFrame(callId, base64Jpeg))
+        }
     }
 
     private val client = OkHttpClient.Builder()

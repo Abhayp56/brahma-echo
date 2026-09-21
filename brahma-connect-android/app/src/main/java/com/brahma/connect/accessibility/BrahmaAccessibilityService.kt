@@ -419,6 +419,47 @@ class BrahmaAccessibilityService : AccessibilityService() {
         return true
     }
 
+    // ==========================================
+    // 9. IN-MEMORY SCREENSHOT CAPTURE
+    // ==========================================
+    fun captureScreenBitmap(callback: (android.graphics.Bitmap?) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val executor = androidx.core.content.ContextCompat.getMainExecutor(this)
+            try {
+                takeScreenshot(
+                    android.view.Display.DEFAULT_DISPLAY,
+                    executor,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshotResult: ScreenshotResult) {
+                            try {
+                                val hardwareBuffer = screenshotResult.hardwareBuffer
+                                val colorSpace = screenshotResult.colorSpace
+                                val hwBitmap = android.graphics.Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+                                hardwareBuffer.close()
+                                val softwareBitmap = hwBitmap?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                                hwBitmap?.recycle()
+                                callback(softwareBitmap)
+                            } catch (e: Throwable) {
+                                Log.e(TAG, "Error processing screenshot: ${e.message}")
+                                callback(null)
+                            }
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            Log.w(TAG, "takeScreenshot failed with code: $errorCode")
+                            callback(null)
+                        }
+                    }
+                )
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed to call takeScreenshot: ${e.message}")
+                callback(null)
+            }
+        } else {
+            callback(null)
+        }
+    }
+
     companion object {
         private const val TAG = "BrahmaAccessibility"
         var instance: BrahmaAccessibilityService? = null

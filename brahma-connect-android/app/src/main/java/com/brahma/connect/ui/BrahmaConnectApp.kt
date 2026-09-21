@@ -689,13 +689,23 @@ private fun ConnectedScreen(
         Spacer(Modifier.height(16.dp))
 
         // --- Notification Intelligence Status & Setup Card ---
-        val isNotifRunning = BrahmaNotificationListenerService.instance != null || BrahmaNotificationListenerService.isPermissionGranted(context)
+        val isNotifRunning = remember(status, logs.size) {
+            BrahmaNotificationListenerService.instance != null || BrahmaNotificationListenerService.isPermissionGranted(context)
+        }
         Card(
             onClick = {
-                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching {
+                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }.onFailure {
+                    runCatching {
+                        context.startActivity(Intent(Settings.ACTION_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                    }
                 }
-                context.startActivity(intent)
             },
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(

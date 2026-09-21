@@ -1360,6 +1360,17 @@ async def websocket_phone_companion(websocket: WebSocket):
                     pcm_bytes = base64.b64decode(b64_data)
                     await brain.handle_incoming_audio(pcm_bytes)
 
+            # 7c. Incoming Camera Vision Frame from Phone (Live Multimodal Camera Grounding)
+            elif msg_type == "call_vision_frame":
+                b64_img = payload.get("image", "") or payload.get("data", "")
+                if b64_img and brain:
+                    try:
+                        jpeg_bytes = base64.b64decode(b64_img)
+                        await brain.handle_incoming_vision_frame(jpeg_bytes)
+                    except Exception as vex:
+                        logger.debug(f"Failed to decode or forward vision frame: {vex}")
+
+
             # 8. Ping / Pong
             elif msg_type == "ping":
                 reply = {

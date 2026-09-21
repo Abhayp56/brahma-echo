@@ -48,6 +48,7 @@ class DeviceCommandHandler(private val context: Context) {
         return when (action.lowercase().trim()) {
             // Screen Vision & UI Control
             "see_screen", "inspect_screen" -> seeScreen()
+            "capture_screen_image", "get_screenshot_image" -> captureScreenImage()
             "smart_ui_click", "click_element" -> smartUiClick(parameters)
             "smart_ui_type", "type_text" -> smartUiType(parameters)
             "smart_ui_scroll", "scroll_screen" -> smartUiScroll(parameters)
@@ -90,6 +91,7 @@ class DeviceCommandHandler(private val context: Context) {
             "flashlight_on" -> flashlight(true)
             "flashlight_off" -> flashlight(false)
             "launch_app" -> launchApp(parameters)
+            "open_camera", "launch_camera" -> openCamera()
             "open_url" -> openUrl(parameters)
             "volume_get" -> volumeGet()
             "volume_set" -> volumeSet(parameters)
@@ -990,5 +992,58 @@ class DeviceCommandHandler(private val context: Context) {
             nm.setInterruptionFilter(filter)
         }
         return CommandResult(true, data = mapOf("dnd_enabled" to enable))
+    }
+
+    // ==========================================================
+    // IN-MEMORY SCREENSHOT & CAMERA LAUNCH (PHASE 2)
+    // ==========================================================
+
+    private fun captureScreenImage(): CommandResult {
+        val service = BrahmaAccessibilityService.instance
+            ?: return CommandResult(false, errorCode = "ACCESSIBILITY_DISABLED", error = "Accessibility service is disabled.")
+
+        var capturedBitmap: android.graphics.Bitmap? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+
+        service.captureScreenBitmap { bitmap ->
+            capturedBitmap = bitmap
+            latch.countDown()
+        }
+
+        val ok = latch.await(4, java.util.concurrent.TimeUnit.SECONDS)
+        val bmp = capturedBitmap
+        if (!ok || bmp == null) {
+            return CommandResult(false, errorCode = "SCREENSHOT_FAILED", error = "Failed to capture in-memory screen image. (Requires Android 11+)")
+        }
+
+        val stream = java.io.ByteArrayOutputStream()
+        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, stream)
+        val bytes = stream.toByteArray()
+        val width = bmp.width
+        val height = bmp.height
+        bmp.recycle()
+        val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+
+        return CommandResult(
+            true,
+            data = mapOf(
+                "image" to base64Str,
+                "mime_type" to "image/jpeg",
+                "width" to width,
+                "height" to height,
+            )
+        )
+    }
+
+    private fun openCamera(): CommandResult {
+        return try {
+            val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            CommandResult(true, data = mapOf("message" to "Camera opened successfully."))
+        } catch (e: Exception) {
+            CommandResult(false, errorCode = "CAMERA_LAUNCH_FAILED", error = "Could not launch camera: ${e.message}")
+        }
     }
 }

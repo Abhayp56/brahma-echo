@@ -1,66 +1,44 @@
 package com.brahma.connect
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import android.content.Context
-import android.net.Uri
-import android.os.PowerManager
-import android.provider.Settings
+import androidx.lifecycle.lifecycleScope
 import com.brahma.connect.core.AgentStateStore
 import com.brahma.connect.pairing.PairingStorage
 import com.brahma.connect.ui.BrahmaConnectApp
 import com.brahma.connect.ui.theme.BrahmaConnectTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var storage: PairingStorage
     private var pendingServiceStart = false
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
-        // The UI will react by showing the scanner if permission is granted.
+        // Reaction handled by compose state
     }
 
-    private val contactsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            AgentStateStore.addLog("Contacts permission granted")
-        }
-    }
-
-    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
-        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true || perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
-            AgentStateStore.addLog("Location permission granted for weather & briefing")
-        }
-    }
-
-    private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            AgentStateStore.addLog("Microphone permission granted for voice calls")
-        }
-    }
-
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (pendingServiceStart) {
-                pendingServiceStart = false
-                startGatewayService()
+    private val multiPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
+        perms.forEach { (perm, granted) ->
+            if (granted) {
+                val shortName = perm.substringAfterLast('.')
+                AgentStateStore.addLog("Permission granted: $shortName")
             }
-        } else {
-            pendingServiceStart = false
-            AgentStateStore.setError("Notification permission is required for Brahma Connect.")
-            AgentStateStore.setStatus("Notification permission denied")
         }
-    }
-
-    private val callLogPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            AgentStateStore.addLog("Call log permission granted for JARVIS")
+        if (pendingServiceStart) {
+            pendingServiceStart = false
+            startGatewayService()
         }
     }
 
@@ -95,13 +73,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
-        maybeStartService()
-        ensureCameraPermission()
-        ensureAudioPermission()
-        ensureContactsPermission()
-        ensureLocationPermission()
-        ensureCallLogPermission()
-        ensureBatteryOptimizationExemption()
+
         setContent {
             BrahmaConnectTheme {
                 BrahmaConnectApp(
@@ -109,10 +81,12 @@ class MainActivity : ComponentActivity() {
                         cameraPermission.launch(Manifest.permission.CAMERA)
                     },
                     onRequestNotificationPermission = {
-                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            multiPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                        }
                     },
                     onRequestCallLogPermission = {
-                        callLogPermission.launch(Manifest.permission.READ_CALL_LOG)
+                        multiPermissionLauncher.launch(arrayOf(Manifest.permission.READ_CALL_LOG))
                     },
                     onOpenNotificationListenerSettings = {
                         try {
@@ -128,6 +102,15 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+
+        // Request missing permissions safely in a single batch dialog
+        requestCorePermissions()
+        maybeStartService()
+
+        lifecycleScope.launch {
+            delay(1500)
+            ensureBatteryOptimizationExemption()
+        }
     }
 
     private fun maybeStartService() {
@@ -137,42 +120,34 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
                 pendingServiceStart = true
-                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                multiPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                 return
             }
             startGatewayService()
         }
     }
 
-    private fun ensureCameraPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-    }
+    private fun requestCorePermissions() {
+        val permissionsToRequest = mutableListOf<String>()
 
-    private fun ensureAudioPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
         }
-    }
-
-    private fun ensureContactsPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+            permissionsToRequest.add(Manifest.permission.READ_CONTACTS)
         }
-    }
-
-    private fun ensureLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.READ_CALL_LOG)
+        }
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) {
-            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
-    }
 
-    private fun ensureCallLogPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
-            callLogPermission.launch(Manifest.permission.READ_CALL_LOG)
+        if (permissionsToRequest.isNotEmpty()) {
+            multiPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
@@ -183,6 +158,7 @@ class MainActivity : ComponentActivity() {
                 if (!pm.isIgnoringBatteryOptimizations(packageName)) {
                     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                         data = Uri.parse("package:$packageName")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     startActivity(intent)
                 }
@@ -195,8 +171,12 @@ class MainActivity : ComponentActivity() {
     private fun startGatewayService() {
         val endpoint = AgentStateStore.gateway.value
         if (endpoint != null || AgentStateStore.credential.value != null) {
-            val intent = Intent(this, BrahmaConnectForegroundService::class.java)
-            ContextCompat.startForegroundService(this, intent)
+            try {
+                val intent = Intent(this, BrahmaConnectForegroundService::class.java)
+                ContextCompat.startForegroundService(this, intent)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error starting BrahmaConnectForegroundService: ${e.message}")
+            }
         }
     }
 }

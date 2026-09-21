@@ -262,6 +262,13 @@ object BrahmaProtocol {
         CALL_SPEECH_TEXT,
         JSONObject().put("call_id", callId).put("text", text)
     )
+
+    const val CALL_VISION_FRAME = "call_vision_frame"
+
+    fun callVisionFrame(callId: String, imageBase64: String): JSONObject = envelope(
+        CALL_VISION_FRAME,
+        JSONObject().put("call_id", callId).put("image", imageBase64).put("mime_type", "image/jpeg")
+    )
 }
 
 fun toJsonValue(value: Any?): Any? {

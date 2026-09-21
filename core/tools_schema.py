@@ -1058,7 +1058,9 @@ TOOL_DECLARATIONS = [
         "name": "phone_hub_control",
         "description": (
             "Remotely controls the user's Android phone in the background via Brahma Connect. "
-            "Allows JARVIS to see what is currently on the screen (see_screen), tap buttons or interactive elements (smart_ui_click), "
+            "Allows JARVIS to see what is currently on the screen (see_screen), visually analyze full screen content with multimodal vision (analyze_screen), "
+            "capture in-memory screenshot images (capture_screen_image), launch the phone camera (open_camera), "
+            "tap buttons or interactive elements (smart_ui_click), "
             "type text into fields (smart_ui_type), scroll up/down (smart_ui_scroll), read all screen text (get_screen_text), "
             "read incoming notifications (get_notifications), check missed calls (get_missed_calls), inspect call log (get_call_log), "
             "universally control media playback (media_control with play/pause/next/previous), inspect now playing track (now_playing), "
@@ -1072,7 +1074,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "The phone action to execute: 'get_notifications', 'get_missed_calls', 'get_call_log', 'media_control', 'now_playing', 'stop_everything', 'lock_screen', 'set_dnd', 'see_screen', 'smart_ui_click', 'smart_ui_type', 'smart_ui_scroll', 'get_screen_text', 'send_whatsapp', 'play_media', 'make_call', 'send_sms', 'read_sms', 'get_location', 'volume_set', 'set_brightness', 'flashlight_on', 'flashlight_off', 'vibrate', 'get_clipboard', 'set_clipboard', 'list_apps', 'press_key'."
+                    "description": "The phone action to execute: 'analyze_screen', 'capture_screen_image', 'open_camera', 'get_notifications', 'get_missed_calls', 'get_call_log', 'media_control', 'now_playing', 'stop_everything', 'lock_screen', 'set_dnd', 'see_screen', 'smart_ui_click', 'smart_ui_type', 'smart_ui_scroll', 'get_screen_text', 'send_whatsapp', 'play_media', 'make_call', 'send_sms', 'read_sms', 'get_location', 'volume_set', 'set_brightness', 'flashlight_on', 'flashlight_off', 'vibrate', 'get_clipboard', 'set_clipboard', 'list_apps', 'press_key'."
                 },
                 "target": {
                     "type": "STRING",
@@ -1088,7 +1090,7 @@ TOOL_DECLARATIONS = [
                 },
                 "query": {
                     "type": "STRING",
-                    "description": "Search query or song name for play_media (YouTube / Spotify)."
+                    "description": "User question or prompt for analyze_screen (e.g. 'what is this error?', 'read this diagram'), or search query/song name for play_media (YouTube / Spotify)."
                 },
                 "app": {
                     "type": "STRING",

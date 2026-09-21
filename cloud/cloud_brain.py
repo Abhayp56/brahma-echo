@@ -8,9 +8,11 @@ and handles remote dispatching of desktop tools to connected laptop workers.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -192,6 +194,7 @@ class CloudBrain:
         self.is_running = False
         self.is_speaking = False
         self._pending_text_futures: List[asyncio.Future] = []
+        self.client: Optional[genai.Client] = None
 
     def log(self, text: str):
         if self.on_log:
@@ -281,6 +284,17 @@ class CloudBrain:
             )
         except Exception as e:
             logger.debug(f"Failed to forward realtime audio: {e}")
+
+    async def handle_incoming_vision_frame(self, jpeg_bytes: bytes):
+        """Feed incoming camera vision frame from phone into Gemini Live for real-time visual grounding."""
+        if not self.session or getattr(self, "_in_turn", False):
+            return
+        try:
+            await self.session.send_realtime_input(
+                media=types.Blob(data=jpeg_bytes, mime_type="image/jpeg")
+            )
+        except Exception as e:
+            logger.debug(f"Failed to forward realtime vision frame: {e}")
 
     async def handle_text_command(self, text: str, wait_for_response: bool = False, timeout: float = 20.0) -> Optional[str]:
         """Inject a direct text command into the live session."""
@@ -482,6 +496,56 @@ class CloudBrain:
 
             self.log(f"📱 Executing phone_hub_control: action='{action}', args={args}")
             try:
+                # Special multimodal screen analysis via Gemini 2.0 Flash (Phase 2)
+                if action in ["analyze_screen", "screen_vision", "inspect_screen_image"]:
+                    shot_res = await self.phone_hub.execute_phone_command("capture_screen_image", {}, timeout=15.0)
+                    if not shot_res.get("success"):
+                        err = shot_res.get("error", "Failed to capture phone screen screenshot.")
+                        return types.FunctionResponse(id=call_id, name=name, response={"result": f"Screen capture failed: {err}"})
+
+                    shot_data = shot_res.get("data", {})
+                    b64_img = shot_data.get("image", "")
+                    if not b64_img:
+                        return types.FunctionResponse(id=call_id, name=name, response={"result": "Screen capture returned empty image data."})
+
+                    jpeg_bytes = base64.b64decode(b64_img)
+                    user_query = args.get("query") or args.get("question") or args.get("prompt") or args.get("text") or "Analyze what is displayed on this phone screen. Describe the active application, important information, and any errors or choices."
+                    w = shot_data.get("width", 0)
+                    h = shot_data.get("height", 0)
+
+                    prompt = (
+                        f"You are ARYA / JARVIS, an autonomous AI co-pilot analyzing the user's Android phone screen.\n"
+                        f"User request: {user_query}\n"
+                        f"Screen dimensions: {w}x{h}.\n"
+                        f"Provide a clear, concise, direct response for the boss based on the screen image."
+                    )
+                    image_part = types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg")
+
+                    gen_client = getattr(self, "client", None)
+                    if not gen_client:
+                        api_key = get_api_key()
+                        gen_client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
+
+                    analysis_resp = None
+                    last_err = None
+                    for model_name in ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+                        try:
+                            analysis_resp = await gen_client.aio.models.generate_content(
+                                model=model_name,
+                                contents=[prompt, image_part],
+                            )
+                            if analysis_resp and analysis_resp.text:
+                                break
+                        except Exception as m_err:
+                            last_err = m_err
+                            logger.warning(f"Screen analysis failed on {model_name}: {m_err}")
+
+                    if analysis_resp and analysis_resp.text:
+                        msg = f"Screen Analysis Result:\n{analysis_resp.text.strip()}"
+                    else:
+                        msg = f"Could not analyze screen visually: {last_err or 'No response from model'}"
+                    return types.FunctionResponse(id=call_id, name=name, response={"result": msg})
+
                 res = await self.phone_hub.execute_phone_command(action, args, timeout=30.0)
                 if res.get("success"):
                     data = res.get("data", {})
@@ -542,6 +606,12 @@ class CloudBrain:
                         msg = f"Phone call initiated to {data.get('number')} ({data.get('action')})."
                     elif action == "get_location":
                         msg = f"Phone GPS Location: Lat {data.get('latitude')}, Lon {data.get('longitude')} (Accuracy: {data.get('accuracy')}m)."
+                    elif action in ["capture_screen_image", "get_screenshot_image"]:
+                        w = data.get("width", 0)
+                        h = data.get("height", 0)
+                        msg = f"Phone screen captured successfully ({w}x{h} pixels, JPEG format). Image data ready in memory."
+                    elif action in ["open_camera", "launch_camera"]:
+                        msg = "Phone camera opened successfully."
                     else:
                         msg = f"Phone action '{action}' executed successfully: {json.dumps(data)}"
                 else:
@@ -951,6 +1021,7 @@ class CloudBrain:
             return
 
         client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
+        self.client = client
         self.is_running = True
 
         while self.is_running:

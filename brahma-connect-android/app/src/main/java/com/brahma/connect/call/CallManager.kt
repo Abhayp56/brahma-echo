@@ -50,6 +50,13 @@ class CallManager private constructor(private val context: Context) {
     var onSendCallEnd: ((callId: String) -> Unit)? = null
     var onSendCallAudio: ((callId: String, base64Chunk: String) -> Unit)? = null
     var onSendCallSpeechText: ((callId: String, text: String) -> Unit)? = null
+    var onSendCallVisionFrame: ((callId: String, base64Jpeg: String) -> Unit)? = null
+
+    fun sendVisionFrame(base64Jpeg: String) {
+        currentOffer?.let { offer ->
+            onSendCallVisionFrame?.invoke(offer.callId, base64Jpeg)
+        }
+    }
 
     init {
         audioEngine = VoiceCallAudioEngine(context) { chunkBase64 ->
