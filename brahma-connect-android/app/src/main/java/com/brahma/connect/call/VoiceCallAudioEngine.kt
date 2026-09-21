@@ -48,6 +48,8 @@ class VoiceCallAudioEngine(
 
     private val audioTrackLock = Any()
     private var recordingJob: Job? = null
+    private var playbackJob: Job? = null
+    private val playbackChannel = kotlinx.coroutines.channels.Channel<ByteArray>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private val engineScope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
     private var isMuted = false
@@ -57,6 +59,7 @@ class VoiceCallAudioEngine(
         isRunning = true
         setupAudioRouting()
         setupAudioTrack()
+        startPlaybackLoop()
         if (enableMicRecording) {
             setupAudioRecord()
             startRecordingLoop()
@@ -71,6 +74,10 @@ class VoiceCallAudioEngine(
         isRunning = false
         recordingJob?.cancel()
         recordingJob = null
+
+        playbackJob?.cancel()
+        playbackJob = null
+        while (playbackChannel.tryReceive().isSuccess) { /* Drain buffer */ }
 
         try {
             audioRecord?.stop()
@@ -110,18 +117,33 @@ class VoiceCallAudioEngine(
         if (!isRunning) return
         try {
             val pcmBytes = Base64.decode(base64Data, Base64.DEFAULT)
-            synchronized(audioTrackLock) {
-                if (isRunning) {
-                    audioTrack?.write(pcmBytes, 0, pcmBytes.size)
-                }
-            }
+            // Non-blocking enqueue: returns instantly without blocking the OkHttp WebSocket reader thread!
+            playbackChannel.trySend(pcmBytes)
 
             mainHandler.removeCallbacks(finishPlaybackRunnable)
             onPlaybackStarted?.invoke()
             // 750ms buffer prevents network jitter between audio chunks from false-triggering end of turn
             mainHandler.postDelayed(finishPlaybackRunnable, 750L)
         } catch (e: Exception) {
-            Log.w(TAG, "Error playing incoming audio chunk: ${e.message}")
+            Log.w(TAG, "Error enqueueing incoming audio chunk: ${e.message}")
+        }
+    }
+
+    private fun startPlaybackLoop() {
+        playbackJob = engineScope.launch {
+            for (chunk in playbackChannel) {
+                if (!isActive || !isRunning) break
+                synchronized(audioTrackLock) {
+                    val track = audioTrack
+                    if (track != null && isRunning) {
+                        try {
+                            track.write(chunk, 0, chunk.size)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "AudioTrack write error: ${e.message}")
+                        }
+                    }
+                }
+            }
         }
     }
 

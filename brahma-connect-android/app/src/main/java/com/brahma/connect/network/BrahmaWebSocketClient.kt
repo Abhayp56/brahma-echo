@@ -59,7 +59,7 @@ class BrahmaWebSocketClient(
 
     private val client = OkHttpClient.Builder()
         .retryOnConnectionFailure(true)
-        .pingInterval(15, TimeUnit.SECONDS)
+        .pingInterval(30, TimeUnit.SECONDS)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
@@ -73,27 +73,28 @@ class BrahmaWebSocketClient(
     private var lastConnectUptime = 0L
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var reconnectJob: Job? = null
+    private var lastContactsSyncTime = 0L
 
     fun connect(endpoint: GatewayEndpoint, credential: DeviceCredential? = storage.loadCredential(), offer: PairingOffer? = null) {
-        val now = SystemClock.elapsedRealtime()
         val state = AgentStateStore.connectionState.value
-        if (socket != null && (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING)) {
-            if (now - lastConnectUptime < 5000L) {
-                return
-            }
-        }
-        if (socket != null && currentEndpoint?.url == endpoint.url && currentEndpoint?.host == endpoint.host && state == ConnectionState.CONNECTED) {
+        val isSameTarget = currentEndpoint != null && (
+            (endpoint.url.isNotBlank() && currentEndpoint?.url == endpoint.url) ||
+            (endpoint.host.isNotBlank() && currentEndpoint?.host == endpoint.host)
+        )
+
+        if (socket != null && isSameTarget && (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING)) {
+            android.util.Log.d("BrahmaWebSocketClient", "Already connected/connecting to ${endpoint.name}, preserving active session.")
             currentCredential = credential ?: currentCredential
             currentOffer = offer ?: currentOffer
-            AgentStateStore.setGateway(endpoint)
             return
         }
+
         currentEndpoint = endpoint
         currentCredential = credential
         currentOffer = offer
         manualDisconnect = false
         reconnectAttempt = 0
-        lastConnectUptime = now
+        lastConnectUptime = SystemClock.elapsedRealtime()
         AgentStateStore.setGateway(endpoint)
         AgentStateStore.setConnectionState(ConnectionState.CONNECTING)
         AgentStateStore.setStatus("Connecting to ${endpoint.name}")
@@ -385,13 +386,19 @@ class BrahmaWebSocketClient(
         AgentStateStore.addChatMessage(sent)
     }
 
-    fun syncContactsIfPermitted() {
+    fun syncContactsIfPermitted(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastContactsSyncTime < 30 * 60 * 1000L) {
+            return
+        }
+
         val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
             context,
             android.Manifest.permission.READ_CONTACTS
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
+            lastContactsSyncTime = now
             Thread {
                 try {
                     val contacts = com.brahma.connect.contacts.ContactsHelper.fetchContacts(context)
