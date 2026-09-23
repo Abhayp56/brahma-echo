@@ -92,6 +92,30 @@ def stage_item(action: str = "present", title: str = "", body: str = "", src: Op
         return {"success": False, "error": str(exc)}
 
 
+def stage_pc_file(file_path: str, title: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Stages a file from the user's PC directly onto the Barehands holographic workspace.
+    Supports images (.png, .jpg, .webp, .gif), 3D models (.glb, .gltf), and documents (.txt, .md).
+    """
+    p = Path(file_path).expanduser()
+    if not p.is_file():
+        return {"success": False, "error": f"File not found: {file_path}"}
+
+    ext = p.suffix.lower()
+    t = title or p.stem
+
+    if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".webm", ".glb", ".gltf"):
+        return stage_item(action="present", title=t, src=str(p.resolve()))
+    elif ext in (".md", ".txt", ".json", ".py", ".html", ".log", ".csv"):
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")[:3000]
+            return stage_item(action="present", title=t, body=content)
+        except Exception as e:
+            return {"success": False, "error": f"Could not read text file: {e}"}
+    else:
+        return {"success": False, "error": f"Unsupported file type: {ext}"}
+
+
 def _launch_browser(url: str) -> None:
     """Launch browser, preferring Chrome standalone app mode for clean holographic HUD."""
     chrome_candidates = [
@@ -177,18 +201,22 @@ def launch_barehands(parameters: Optional[Dict[str, Any]] = None, player: Option
     # Launch browser window
     _launch_browser(BAREHANDS_URL)
 
-    # If the user asked to present a card, stage it asynchronously so we don't delay JARVIS speech
+    # If the user asked to present a specific PC file or card, stage it asynchronously
+    target_file = params.get("file_path") or params.get("file")
     card_title = params.get("card_title") or params.get("title") or ""
     card_body = params.get("card_body") or params.get("body") or ""
-    if card_title or card_body or params.get("present_card"):
+    if target_file or card_title or card_body or params.get("present_card"):
         import threading
         def _delayed_stage():
-            time.sleep(1.0)
-            stage_item(
-                action="present",
-                title=card_title or "TACTICAL INTEL",
-                body=card_body or "Holographic workspace online.",
-            )
+            time.sleep(1.2)
+            if target_file:
+                stage_pc_file(target_file, title=card_title)
+            else:
+                stage_item(
+                    action="present",
+                    title=card_title or "TACTICAL INTEL",
+                    body=card_body or "Holographic workspace online.",
+                )
         threading.Thread(target=_delayed_stage, daemon=True).start()
 
     if player and hasattr(player, "write_log"):
