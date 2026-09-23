@@ -207,4 +207,19 @@ class LocalToolDispatcher:
                 src=a.get("src")
             )
 
+        elif tool_name in {"generate_3d_model", "create_3d_model", "make_3d_model", "build_3d_model"}:
+            from actions.barehands import generate_and_stage_3d
+            return lambda a: generate_and_stage_3d(
+                prompt=a.get("prompt") or a.get("query") or a.get("name") or "arc reactor",
+                mode=a.get("mode", "holo"),
+                player=self.player
+            )
+
+        elif tool_name in {"control_3d_model", "explode_model", "assemble_model", "explode_view"}:
+            from actions.barehands import control_3d
+            return lambda a: control_3d(
+                action=a.get("action") or ("explode" if "explode" in tool_name else "assemble"),
+                player=self.player
+            )
+
         return None

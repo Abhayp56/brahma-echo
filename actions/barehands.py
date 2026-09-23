@@ -116,6 +116,64 @@ def stage_pc_file(file_path: str, title: Optional[str] = None) -> Dict[str, Any]
         return {"success": False, "error": f"Unsupported file type: {ext}"}
 
 
+def generate_and_stage_3d(prompt: str, mode: str = "holo", player: Optional[Any] = None) -> Dict[str, Any]:
+    """
+    Generates a custom 3D model with multiple explodable components on-demand
+    and stages it directly onto the Barehands holographic workspace.
+    """
+    if not _is_server_running():
+        launch_barehands()
+        time.sleep(1.0)
+
+    try:
+        from actions.model_generator_3d import generate_model
+        fpath, title, count = generate_model(prompt, mode=mode)
+    except Exception as exc:
+        err = f"Failed to generate 3D model: {exc}"
+        logger.error(err)
+        return {"success": False, "error": err}
+
+    res = stage_item(action="present", title=title, src=str(fpath.resolve()))
+    if res.get("success"):
+        msg = f"Rendered 3D {title} with {count} components onto your holographic workspace. You can explode or inspect the parts anytime, boss."
+        if player and hasattr(player, "write_log"):
+            player.write_log(f"💠 Staged 3D Model: {title} ({count} components)")
+        return {"success": True, "title": title, "parts_count": count, "message": msg, "file": str(fpath)}
+    return res
+
+
+def control_3d(action: str = "explode", player: Optional[Any] = None) -> Dict[str, Any]:
+    """
+    Controls the active 3D model on the holographic workspace:
+    - 'explode': expands the model into its individual components.
+    - 'assemble': returns the components back into the unified structure.
+    - 'hover': pulses the model for tactical attention.
+    """
+    if not _is_server_running():
+        return {"success": False, "error": "Barehands workspace is not currently active"}
+
+    act = action.lower().strip()
+    if act in ("explode", "break", "disassemble", "expand"):
+        cmd_act = "explode"
+        msg = "Expanding model into exploded component view, boss."
+    elif act in ("assemble", "rebuild", "collapse", "reset", "join"):
+        cmd_act = "assemble"
+        msg = "Reassembling model into primary configuration, boss."
+    elif act in ("hover", "pulse"):
+        cmd_act = "hover"
+        msg = "Pulsing model for tactical focus."
+    else:
+        cmd_act = "explode"
+        msg = "Adjusting 3D model configuration."
+
+    res = stage_item(action=cmd_act)
+    if res.get("success"):
+        if player and hasattr(player, "write_log"):
+            player.write_log(f"💠 3D Model Control: {cmd_act}")
+        return {"success": True, "action": cmd_act, "message": msg}
+    return res
+
+
 def _launch_browser(url: str) -> None:
     """Launch browser, preferring Chrome standalone app mode for clean holographic HUD."""
     chrome_candidates = [

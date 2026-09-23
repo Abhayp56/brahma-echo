@@ -228,6 +228,49 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "generate_3d_model",
+        "description": (
+            "Generates a 3D model (e.g. Arc Reactor, drone, jet engine, turbine, satellite, gear train, rocket, or custom structure) "
+            "and immediately renders and stages it onto the touchless holographic glass board. "
+            "The model is constructed with distinct mechanical components enabling exploded view and gesture scrubbing. "
+            "Use this tool whenever the user asks to 'create a 3D model', 'make an arc reactor in 3D', 'generate a 3D drone', "
+            "'show me a 3D engine', 'build a 3D model', or similar 3D requests."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "prompt": {
+                    "type": "STRING",
+                    "description": "What 3D model to create (e.g. 'arc reactor', 'drone', 'jet turbine', 'satellite', 'gear assembly', 'rocket')"
+                },
+                "mode": {
+                    "type": "STRING",
+                    "description": "Render mode: 'holo' (glowing blue holographic wireframe with scan beams) or 'solid' (realistic PBR materials). Defaults to 'holo'."
+                }
+            },
+            "required": ["prompt"]
+        }
+    },
+    {
+        "name": "control_3d_model",
+        "description": (
+            "Controls the active 3D model on the holographic workspace. "
+            "Supports: 'explode' (deconstructs the model into its individual floating components), "
+            "'assemble' (rebuilds the components back into the primary solid shape), or 'hover' (pulses the model for focus). "
+            "Use this tool whenever the user asks to 'explode the model', 'disassemble it', 'assemble the model', 'put it back together', or 'explode view'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "The command action: 'explode' or 'assemble'"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
         "name": "web_search",
         "description": "Searches the web for any information.",
         "parameters": {

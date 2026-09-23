@@ -241,6 +241,12 @@ def open_app(
         res = launch_barehands(parameters, player)
         return res.get("message", "Holographic workspace is now online, sir.")
 
+    # Direct launch for 3D model requests routed through open_app
+    if any(k in app_name.lower() for k in ("3d model", "arc reactor", "3d drone", "3d engine", "3d turbine", "3d satellite")):
+        from actions.barehands import generate_and_stage_3d
+        res = generate_and_stage_3d(app_name, player=player)
+        return res.get("message", f"3D model is now projected on your screen, boss.")
+
     system   = platform.system()
     launcher = _OS_LAUNCHERS.get(system)
 
