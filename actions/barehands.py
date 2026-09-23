@@ -116,14 +116,72 @@ def stage_pc_file(file_path: str, title: Optional[str] = None) -> Dict[str, Any]
         return {"success": False, "error": f"Unsupported file type: {ext}"}
 
 
+_CHROME_PROCESS: Optional[subprocess.Popen] = None
+
+
+def _is_barehands_window_open() -> bool:
+    """Check if Chrome or browser window running stage.html is currently active."""
+    global _CHROME_PROCESS
+    if _CHROME_PROCESS and _CHROME_PROCESS.poll() is None:
+        return True
+    try:
+        if sys.platform == "win32":
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*8794*stage.html*' } | Measure-Object | Select-Object -ExpandProperty Count"],
+                capture_output=True, text=True, timeout=2.0
+            )
+            count = int(res.stdout.strip() or 0)
+            if count > 0:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _launch_browser(url: str) -> None:
+    """Launch browser once, avoiding duplicate windows and camera conflicts."""
+    global _CHROME_PROCESS
+    if _is_barehands_window_open():
+        logger.info("Barehands window is already active. Skipping duplicate browser launch.")
+        return
+
+    chrome_candidates = [
+        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+    ]
+    for chrome_path in chrome_candidates:
+        if os.path.exists(chrome_path):
+            try:
+                _CHROME_PROCESS = subprocess.Popen(
+                    [chrome_path, f"--app={url}", "--start-maximized"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                )
+                logger.info(f"Opened Barehands in Chrome app mode: {url}")
+                return
+            except Exception as e:
+                logger.warning(f"Could not launch Chrome app mode: {e}")
+                break
+
+    webbrowser.open(url)
+    logger.info(f"Opened Barehands in default browser: {url}")
+
+
 def generate_and_stage_3d(prompt: str, mode: str = "holo", player: Optional[Any] = None) -> Dict[str, Any]:
     """
     Generates a custom 3D model with multiple explodable components on-demand
     and stages it directly onto the Barehands holographic workspace.
+    Guarantees both server and browser window are running without duplicate instances.
     """
     if not _is_server_running():
         launch_barehands()
-        time.sleep(1.0)
+        time.sleep(1.2)
+    elif not _is_barehands_window_open():
+        _launch_browser(BAREHANDS_URL)
+        time.sleep(0.8)
 
     try:
         from actions.model_generator_3d import generate_model
@@ -172,32 +230,6 @@ def control_3d(action: str = "explode", player: Optional[Any] = None) -> Dict[st
             player.write_log(f"💠 3D Model Control: {cmd_act}")
         return {"success": True, "action": cmd_act, "message": msg}
     return res
-
-
-def _launch_browser(url: str) -> None:
-    """Launch browser, preferring Chrome standalone app mode for clean holographic HUD."""
-    chrome_candidates = [
-        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
-        os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
-        os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
-    ]
-    for chrome_path in chrome_candidates:
-        if os.path.exists(chrome_path):
-            try:
-                subprocess.Popen(
-                    [chrome_path, f"--app={url}", "--start-maximized"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    close_fds=True,
-                )
-                logger.info(f"Opened Barehands in Chrome app mode: {url}")
-                return
-            except Exception as e:
-                logger.warning(f"Could not launch Chrome app mode: {e}")
-                break
-
-    webbrowser.open(url)
-    logger.info(f"Opened Barehands in default browser: {url}")
 
 
 def launch_barehands(parameters: Optional[Dict[str, Any]] = None, player: Optional[Any] = None) -> Dict[str, Any]:

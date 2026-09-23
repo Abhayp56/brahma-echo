@@ -364,6 +364,153 @@ def _make_generic_parametric(prompt: str) -> Tuple[Any, str]:
     return scene, f"Holographic {prompt.title()}"
 
 
+def _make_cat() -> Tuple[Any, str]:
+    """Generates an explodable Cybernetic Feline / Cat model."""
+    scene = trimesh.Scene()
+
+    # 1. Main Torso
+    torso = trimesh.creation.box(extents=[0.55, 1.0, 0.45])
+    torso.apply_transform(trimesh.transformations.translation_matrix([0, 0, 0.1]))
+    torso.visual.vertex_colors = [50, 60, 75, 255]
+    scene.add_geometry(torso, node_name="cat_torso")
+
+    # 2. Chest & Tactical Collar
+    collar = trimesh.creation.annulus(r_min=0.25, r_max=0.38, height=0.12, sections=24)
+    rot_c = trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
+    trans_c = trimesh.transformations.translation_matrix([0, 0.55, 0.3])
+    collar.apply_transform(trans_c @ rot_c)
+    collar.visual.vertex_colors = [0, 240, 255, 255]
+    scene.add_geometry(collar, node_name="tactical_collar")
+
+    # 3. Head
+    head = trimesh.creation.box(extents=[0.48, 0.42, 0.38])
+    head.apply_transform(trimesh.transformations.translation_matrix([0, 0.72, 0.42]))
+    head.visual.vertex_colors = [70, 85, 105, 255]
+    scene.add_geometry(head, node_name="cat_head")
+
+    # 4. Pointed Ears (Left & Right)
+    for sign, label in [(-1, "ear_left"), (1, "ear_right")]:
+        ear = trimesh.creation.cone(radius=0.12, height=0.32, sections=12)
+        trans_e = trimesh.transformations.translation_matrix([sign * 0.18, 0.72, 0.72])
+        rot_e = trimesh.transformations.rotation_matrix(sign * 0.15, [0, 1, 0])
+        ear.apply_transform(trans_e @ rot_e)
+        ear.visual.vertex_colors = [0, 229, 255, 255]
+        scene.add_geometry(ear, node_name=label)
+
+    # 5. Cybernetic Eyes
+    for sign, label in [(-1, "eye_left"), (1, "eye_right")]:
+        eye = trimesh.creation.icosphere(subdivisions=1, radius=0.065)
+        eye.apply_transform(trimesh.transformations.translation_matrix([sign * 0.14, 0.94, 0.46]))
+        eye.visual.vertex_colors = [0, 255, 200, 255]
+        scene.add_geometry(eye, node_name=label)
+
+    # 6. Four Articulated Legs and Paws
+    legs_info = [
+        (-0.24, 0.35, "leg_front_left"),
+        (0.24, 0.35, "leg_front_right"),
+        (-0.24, -0.35, "leg_back_left"),
+        (0.24, -0.35, "leg_back_right"),
+    ]
+    for lx, ly, label in legs_info:
+        leg = trimesh.creation.cylinder(radius=0.08, height=0.5, sections=16)
+        leg.apply_transform(trimesh.transformations.translation_matrix([lx, ly, -0.28]))
+        leg.visual.vertex_colors = [90, 100, 115, 255]
+        scene.add_geometry(leg, node_name=label)
+
+        foot = trimesh.creation.box(extents=[0.14, 0.18, 0.08])
+        foot.apply_transform(trimesh.transformations.translation_matrix([lx, ly + 0.04, -0.52]))
+        foot.visual.vertex_colors = [0, 229, 255, 240]
+        scene.add_geometry(foot, node_name=f"{label}_paw")
+
+    # 7. Articulated Tail
+    tail1 = trimesh.creation.cylinder(radius=0.05, height=0.45, sections=12)
+    rot_t1 = trimesh.transformations.rotation_matrix(-math.pi / 4, [1, 0, 0])
+    trans_t1 = trimesh.transformations.translation_matrix([0, -0.65, 0.25])
+    tail1.apply_transform(trans_t1 @ rot_t1)
+    tail1.visual.vertex_colors = [60, 70, 85, 255]
+    scene.add_geometry(tail1, node_name="tail_base")
+
+    tail2 = trimesh.creation.cylinder(radius=0.04, height=0.35, sections=12)
+    rot_t2 = trimesh.transformations.rotation_matrix(math.pi / 6, [1, 0, 0])
+    trans_t2 = trimesh.transformations.translation_matrix([0, -0.85, 0.52])
+    tail2.apply_transform(trans_t2 @ rot_t2)
+    tail2.visual.vertex_colors = [0, 229, 255, 255]
+    scene.add_geometry(tail2, node_name="tail_tip")
+
+    return scene, "Cybernetic Feline (Cat)"
+
+
+def _make_car() -> Tuple[Any, str]:
+    """Generates an explodable Cybernetic Sports Car / Vehicle model."""
+    scene = trimesh.Scene()
+
+    # 1. Main Chassis
+    chassis = trimesh.creation.box(extents=[0.9, 1.8, 0.28])
+    chassis.apply_transform(trimesh.transformations.translation_matrix([0, 0, 0]))
+    chassis.visual.vertex_colors = [35, 40, 50, 255]
+    scene.add_geometry(chassis, node_name="main_chassis")
+
+    # 2. Cockpit Canopy / Cabin
+    cabin = trimesh.creation.box(extents=[0.75, 0.9, 0.32])
+    cabin.apply_transform(trimesh.transformations.translation_matrix([0, -0.1, 0.28]))
+    cabin.visual.vertex_colors = [0, 229, 255, 180]
+    scene.add_geometry(cabin, node_name="canopy_cockpit")
+
+    # 3. 4 Wheels
+    for wx, wy, label in [
+        (-0.52, 0.55, "wheel_front_left"),
+        (0.52, 0.55, "wheel_front_right"),
+        (-0.52, -0.55, "wheel_rear_left"),
+        (0.52, -0.55, "wheel_rear_right"),
+    ]:
+        wheel = trimesh.creation.cylinder(radius=0.25, height=0.18, sections=24)
+        rot_w = trimesh.transformations.rotation_matrix(math.pi / 2, [0, 1, 0])
+        trans_w = trimesh.transformations.translation_matrix([wx, wy, -0.05])
+        wheel.apply_transform(trans_w @ rot_w)
+        wheel.visual.vertex_colors = [25, 25, 30, 255]
+        scene.add_geometry(wheel, node_name=label)
+
+    # 4. Front Aero Bumper
+    bumper = trimesh.creation.box(extents=[0.85, 0.25, 0.16])
+    bumper.apply_transform(trimesh.transformations.translation_matrix([0, 0.95, -0.04]))
+    bumper.visual.vertex_colors = [0, 240, 255, 255]
+    scene.add_geometry(bumper, node_name="aero_splitter")
+
+    # 5. Rear Spoiler Wing
+    wing = trimesh.creation.box(extents=[0.95, 0.18, 0.05])
+    wing.apply_transform(trimesh.transformations.translation_matrix([0, -0.9, 0.38]))
+    wing.visual.vertex_colors = [255, 60, 60, 255]
+    scene.add_geometry(wing, node_name="rear_spoiler")
+
+    return scene, "Cybernetic Sport Vehicle"
+
+
+def _make_credit_card(color: str = "red") -> Tuple[Any, str]:
+    """Generates an explodable Holographic Chip Card / Credit Card model."""
+    scene = trimesh.Scene()
+    card = trimesh.creation.box(extents=[1.5, 0.95, 0.04])
+    c_rgb = [220, 30, 40, 255] if "red" in color else [30, 120, 220, 255]
+    card.visual.vertex_colors = c_rgb
+    scene.add_geometry(card, node_name="card_substrate")
+
+    chip = trimesh.creation.box(extents=[0.24, 0.2, 0.06])
+    chip.apply_transform(trimesh.transformations.translation_matrix([-0.42, 0.05, 0.02]))
+    chip.visual.vertex_colors = [240, 200, 50, 255]
+    scene.add_geometry(chip, node_name="emv_smart_chip")
+
+    stripe = trimesh.creation.box(extents=[1.5, 0.18, 0.05])
+    stripe.apply_transform(trimesh.transformations.translation_matrix([0, 0.25, -0.02]))
+    stripe.visual.vertex_colors = [20, 20, 25, 255]
+    scene.add_geometry(stripe, node_name="magnetic_stripe")
+
+    foil = trimesh.creation.box(extents=[0.22, 0.18, 0.06])
+    foil.apply_transform(trimesh.transformations.translation_matrix([0.48, -0.15, 0.02]))
+    foil.visual.vertex_colors = [0, 240, 255, 255]
+    scene.add_geometry(foil, node_name="security_hologram")
+
+    return scene, f"Holographic {'Red ' if 'red' in color else ''}Credit Card"
+
+
 # ==============================================================================
 # Public API
 # ==============================================================================
@@ -378,7 +525,13 @@ def generate_model(prompt: str, mode: str = "holo", output_dir: Optional[Path] =
 
     p_clean = prompt.lower().strip()
 
-    if any(k in p_clean for k in ["reactor", "arc", "iron man", "tony stark"]):
+    if any(k in p_clean for k in ["cat", "feline", "kitten", "kitty"]):
+        scene, title = _make_cat()
+    elif any(k in p_clean for k in ["car", "vehicle", "automobile", "truck", "audi", "bmw", "tesla"]):
+        scene, title = _make_car()
+    elif any(k in p_clean for k in ["card", "credit card", "debit card", "atm card"]):
+        scene, title = _make_credit_card(color="red" if "red" in p_clean else "blue")
+    elif any(k in p_clean for k in ["reactor", "arc", "iron man", "tony stark"]):
         scene, title = _make_arc_reactor()
     elif any(k in p_clean for k in ["drone", "quadcopter", "uav"]):
         scene, title = _make_drone()

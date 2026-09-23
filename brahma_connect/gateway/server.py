@@ -632,6 +632,11 @@ class BrahmaGateway:
             self._server = uvicorn.Server(cfg)
             self._server.install_signal_handlers = lambda: None
             await self._server.serve()
+        except OSError as e:
+            if getattr(e, "winerror", None) == 10048 or getattr(e, "errno", None) == 10048:
+                logger.info(f"Brahma Connect port {self.config.port} is already held by an active instance.")
+            else:
+                logger.warning(f"Brahma Connect gateway server error: {e}")
         finally:
             self._server = None
             self.discovery.stop()

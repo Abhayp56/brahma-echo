@@ -225,16 +225,19 @@ class _LiveSession:
                 async with client.aio.live.connect(model=LIVE_MODEL, config=config) as session:
                     self._session = session
                     self._ready.set()
-                    print("[ScreenProcess] [OK] Vision session connected")
-                    async with asyncio.TaskGroup() as tg:
-                        tg.create_task(self._send_loop())
-                        tg.create_task(self._recv_loop())
-                        tg.create_task(self._play_loop())
+                    tasks = [
+                        asyncio.create_task(self._send_loop()),
+                        asyncio.create_task(self._recv_loop()),
+                        asyncio.create_task(self._play_loop()),
+                    ]
+                    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+                    for p in pending:
+                        p.cancel()
             except Exception as e:
                 print(f"[ScreenProcess] [WARN] Disconnected: {e} — reconnecting...")
                 self._session = None
                 self._ready.clear()
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 print("[ScreenProcess] [WARN] Reconnect attempt will retry")
 
     async def _send_loop(self):

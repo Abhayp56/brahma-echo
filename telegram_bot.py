@@ -614,7 +614,7 @@ class TelegramBotService:
             "2. Language Protocol: This is a TEXT chat on Telegram. ALWAYS reply in fluent, crisp, executive ENGLISH! Do NOT text in Hindi unless the user specifically asks you to write in Hindi.\n"
             "3. Tool Usage: If the user asks for reminders, time, weather, briefings, WhatsApp messaging, contacts, or web search, invoke the appropriate tools directly.\n"
             "4. Reminders: When user says 'Call me at 4:30 PM' or 'Remind me in 10 minutes', invoke 'schedule_reminder_call'.\n"
-            "5. 3D Holographic Models & Workspace: When user asks to create, build, generate, or show a 3D model (e.g. 'make a 3D model', 'create 3D arc reactor', 'build 3D drone/jet engine/satellite/gear/tesseract'), invoke 'generate_3d_model'. When user asks to explode, disassemble, or assemble the model, invoke 'control_3d_model'. When user asks to open the holographic board, invoke 'holographic_board'. Confirm with a sharp, iconic Tony Stark lab persona!\n"
+            "5. 3D Holographic Models & Workspace: When user asks to create, build, generate, or show a 3D model (e.g. 'make a 3D model', 'make 3rd model of [X]', '3rd model of a cat', 'create 3D arc reactor/drone/cat/car/jet engine/satellite/gear'), ALWAYS interpret '3rd model' as '3D model' and invoke 'generate_3d_model'. When user asks to explode, disassemble, or assemble the model, invoke 'control_3d_model'. Confirm with a sharp, iconic Tony Stark lab persona!\n"
         )
 
         tools = [
