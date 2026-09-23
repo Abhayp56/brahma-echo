@@ -184,6 +184,26 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "global_intelligence",
+        "description": (
+            "Opens and activates God's Eye View — the real-time global planetary intelligence console, "
+            "3D tactical satellite tracking system, and live situational map on the user's laptop screen. "
+            "Use this tool whenever the user says 'pull the global intelligence', 'open god's eye', "
+            "'pull global intelligence', 'activate god's eye', 'show me global tracking', 'satellite tracking', "
+            "or 'god's eye view'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "Optional specific focus or layer, e.g. 'flights', 'satellites', 'maritime', 'weather', or 'full_globe'"
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "web_search",
         "description": "Searches the web for any information.",
         "parameters": {

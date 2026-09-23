@@ -229,6 +229,12 @@ def open_app(
     if not app_name:
         return "Please specify which application to open, sir."
 
+    # Direct launch for God's Eye View / Global Intelligence console
+    if any(k in app_name.lower() for k in ("gods eye", "god's eye", "global intelligence", "godseye")):
+        from actions.gods_eye import launch_gods_eye
+        res = launch_gods_eye(parameters, player)
+        return res.get("message", "Global intelligence console is now online, sir.")
+
     system   = platform.system()
     launcher = _OS_LAUNCHERS.get(system)
 

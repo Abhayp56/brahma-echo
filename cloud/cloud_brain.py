@@ -248,6 +248,7 @@ class CloudBrain:
             "- RECIPIENT ISOLATION: When the user says 'send me a message' or 'text me', 'me' refers to the user (Abhay), NEVER to a contact from a previous turn.\n"
             "- TIMERS & REMINDER CALLS: You have NO internal timers. Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM'), "
             "you MUST execute 'schedule_reminder_call'!\n"
+            "- GLOBAL INTELLIGENCE & GOD'S EYE: When the user asks to 'pull the global intelligence', 'open God's eye', or 'activate global tracking', execute the 'global_intelligence' tool immediately. Deliver a sharp, iconic JARVIS confirmation acknowledging the launch of orbital surveillance / tactical tracking on their display.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate or overlapping tool calls simultaneously.\n"
         )
 
@@ -935,6 +936,8 @@ class CloudBrain:
         # 2. Desktop actions delegated ONLY if physical laptop hardware/screen is required
         LAPTOP_ONLY_TOOLS = {
             "open_app",
+            "global_intelligence",
+            "gods_eye_view",
             "computer_control",
             "computer_settings",
             "screen_process",
@@ -969,7 +972,9 @@ class CloudBrain:
             return types.FunctionResponse(id=call_id, name=name, response={"error": err_msg})
 
         # Announce immediate task progress to user so they know Brahma is working on it
-        if name == "open_app":
+        if name in {"global_intelligence", "gods_eye_view"}:
+            progress_msg = "Initializing orbital feeds and opening Global Intelligence on your laptop..."
+        elif name == "open_app":
             target = args.get("app_name") or "the application"
             progress_msg = f"Opening {target} on your laptop..."
         elif name == "computer_control":

@@ -190,4 +190,8 @@ class LocalToolDispatcher:
             from actions.brahma_connect import connect_execute
             return lambda a: connect_execute(parameters=a, player=self.player)
 
+        elif tool_name in {"gods_eye_view", "global_intelligence", "launch_gods_eye"}:
+            from actions.gods_eye import launch_gods_eye
+            return lambda a: launch_gods_eye(parameters=a, player=self.player)
+
         return None
