@@ -671,6 +671,7 @@ async def on_startup():
                 return None
 
         telegram_bot.bind_command_handler(_telegram_command_bridge)
+        telegram_bot.bind_remote_dispatcher(dispatcher, main_loop)
         tg_cfg = load_telegram_config()
         if tg_cfg.get("enabled", True) and (tg_cfg.get("bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN")):
             telegram_bot.start()

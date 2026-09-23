@@ -141,8 +141,15 @@ class TelegramBotService:
         self._lock = threading.Lock()
         self._stopping = False
         self._bot_username: str = ""
+        self._remote_dispatcher: Optional[Any] = None
+        self._remote_dispatcher_loop: Optional[asyncio.AbstractEventLoop] = None
 
         self._load_config()
+
+    def bind_remote_dispatcher(self, dispatcher: Any, loop: Optional[asyncio.AbstractEventLoop] = None):
+        """Inject a remote tool dispatcher (WebSocketToolDispatcher on Cloud Server)."""
+        self._remote_dispatcher = dispatcher
+        self._remote_dispatcher_loop = loop
 
     def _load_config(self):
         cfg = load_telegram_config()
@@ -607,9 +614,38 @@ class TelegramBotService:
             "2. Language Protocol: This is a TEXT chat on Telegram. ALWAYS reply in fluent, crisp, executive ENGLISH! Do NOT text in Hindi unless the user specifically asks you to write in Hindi.\n"
             "3. Tool Usage: If the user asks for reminders, time, weather, briefings, WhatsApp messaging, contacts, or web search, invoke the appropriate tools directly.\n"
             "4. Reminders: When user says 'Call me at 4:30 PM' or 'Remind me in 10 minutes', invoke 'schedule_reminder_call'.\n"
+            "5. 3D Holographic Models & Workspace: When user asks to create, build, generate, or show a 3D model (e.g. 'make a 3D model', 'create 3D arc reactor', 'build 3D drone/jet engine/satellite/gear/tesseract'), invoke 'generate_3d_model'. When user asks to explode, disassemble, or assemble the model, invoke 'control_3d_model'. When user asks to open the holographic board, invoke 'holographic_board'. Confirm with a sharp, iconic Tony Stark lab persona!\n"
         )
 
         tools = [
+            {
+                "name": "generate_3d_model",
+                "description": "Generates a custom 3D model on-demand and projects it onto the Barehands holographic workspace. Supports multi-part exploded views.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "prompt": {"type": "STRING", "description": "Subject or description of the 3D model (e.g. 'Mark-VI Arc Reactor', 'Tactical Drone', 'Turbofan Jet Engine', 'Satellite', 'Planetary Gear', 'Tesseract')"},
+                        "mode": {"type": "STRING", "description": "'holo' (default luminous cyan ghost-glass hologram) or 'solid'"}
+                    },
+                    "required": ["prompt"]
+                }
+            },
+            {
+                "name": "control_3d_model",
+                "description": "Controls the active 3D model on the holographic workspace: explode (expands into component parts view), assemble (reassembles into unified model), or hover.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "action": {"type": "STRING", "description": "Action: 'explode' (disassemble/expand parts), 'assemble' (reassemble), 'hover'"}
+                    },
+                    "required": ["action"]
+                }
+            },
+            {
+                "name": "holographic_board",
+                "description": "Launches or opens the Barehands holographic air-board workspace with webcam hand tracking.",
+                "parameters": {"type": "OBJECT", "properties": {}}
+            },
             {
                 "name": "schedule_reminder_call",
                 "description": "Schedules a reminder / proactive phone call at a specific IST time.",
@@ -801,6 +837,40 @@ class TelegramBotService:
                 engine = get_search_engine()
                 res = engine.execute(query=query)
                 return res.get("formatted_text") or res.get("results") or "No web results found."
+
+            elif name in {"generate_3d_model", "create_3d_model", "control_3d_model", "explode_model", "assemble_model", "holographic_board"}:
+                # 1. If remote dispatcher is bound and laptop is connected (Cloud Server mode)
+                if self._remote_dispatcher is not None:
+                    if not getattr(self._remote_dispatcher, "is_connected", False):
+                        return "Boss, your laptop task worker is currently offline. Please ensure 'python laptop_worker.py' is running on your laptop so I can project the 3D model onto your screen."
+                    try:
+                        target_loop = self._remote_dispatcher_loop or self._loop
+                        if not target_loop or not target_loop.is_running():
+                            return "Error: Server event loop unavailable for laptop dispatch."
+                        fut = asyncio.run_coroutine_threadsafe(
+                            self._remote_dispatcher.execute_on_laptop(name, args, timeout=50.0),
+                            target_loop
+                        )
+                        res = fut.result(timeout=55.0)
+                        if isinstance(res, dict):
+                            if res.get("success"):
+                                return res.get("result") or "3D model successfully generated and staged on your laptop workspace, boss."
+                            return res.get("error") or "Execution failed on laptop."
+                        return str(res)
+                    except Exception as r_err:
+                        logger.error(f"Remote tool execution error for {name}: {r_err}")
+                        return f"Encountered an issue dispatching {name} to laptop: {r_err}"
+
+                # 2. Local execution (Desktop UI mode)
+                try:
+                    from core.distributed.local_tool_dispatcher import LocalToolDispatcher
+                    d = LocalToolDispatcher()
+                    res = asyncio.run(d.execute(name, args))
+                    if isinstance(res, dict):
+                        return res.get("result") if res.get("success") else res.get("error")
+                    return str(res)
+                except Exception as l_err:
+                    return f"Execution error for {name}: {l_err}"
 
             return f"Tool {name} executed."
         except Exception as e:
