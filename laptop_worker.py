@@ -242,20 +242,42 @@ class LaptopWorker:
                 self.is_authenticated = True
                 logger.info("🟢 Authenticated with Cloud Brain! Ready to execute desktop tasks.")
 
-                # 3. Message dispatch loop
-                async for raw in ws:
-                    msg = parse_message(raw)
-
-                    if msg.type == ProtocolTypes.EXECUTE_TOOL:
-                        asyncio.create_task(self._handle_execute_tool(msg.request_id, msg.payload))
-
-                    elif msg.type == ProtocolTypes.AUDIO_CHUNK:
-                        # Voice playback is handled entirely on the web interface; laptop stays silent
+                # Background application-level heartbeat every 20 seconds to prevent idle proxy disconnects on Render
+                async def _ping_heartbeat():
+                    try:
+                        while True:
+                            await asyncio.sleep(20)
+                            if ws and ws.open:
+                                ping_msg = build_message(ProtocolTypes.PING)
+                                await ws.send(ping_msg.to_json())
+                    except (asyncio.CancelledError, GeneratorExit):
                         pass
+                    except Exception as err:
+                        logger.debug(f"Heartbeat loop exit: {err}")
 
-                    elif msg.type == ProtocolTypes.PING:
-                        pong = build_message(ProtocolTypes.PONG, request_id=msg.request_id)
-                        await ws.send(pong.to_json())
+                heartbeat_task = asyncio.create_task(_ping_heartbeat())
+
+                # 3. Message dispatch loop
+                try:
+                    async for raw in ws:
+                        msg = parse_message(raw)
+
+                        if msg.type == ProtocolTypes.EXECUTE_TOOL:
+                            asyncio.create_task(self._handle_execute_tool(msg.request_id, msg.payload))
+
+                        elif msg.type == ProtocolTypes.AUDIO_CHUNK:
+                            # Voice playback is handled entirely on the web interface; laptop stays silent
+                            pass
+
+                        elif msg.type == ProtocolTypes.PING:
+                            pong = build_message(ProtocolTypes.PONG, request_id=msg.request_id)
+                            await ws.send(pong.to_json())
+
+                        elif msg.type == ProtocolTypes.PONG:
+                            pass
+                finally:
+                    if not heartbeat_task.done():
+                        heartbeat_task.cancel()
         finally:
             self.is_authenticated = False
             self.ws = None

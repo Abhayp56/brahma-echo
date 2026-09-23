@@ -90,7 +90,10 @@ class WebSocketToolDispatcher(RemoteToolDispatcher):
         self.laptop_info = info
         logger.info(f"Registered laptop worker: {info.get('device_name', 'Unknown')}")
 
-    def unregister_laptop(self):
+    def unregister_laptop(self, ws: Optional[WebSocket] = None):
+        if ws is not None and self.laptop_ws != ws:
+            logger.info("Stale laptop connection closed; active laptop remains registered.")
+            return
         logger.info("Laptop worker disconnected.")
         self.laptop_ws = None
         self.laptop_info = {}
@@ -1484,7 +1487,7 @@ async def websocket_laptop_node(websocket: WebSocket):
         logger.error(f"Error in laptop WebSocket loop: {exc}")
     finally:
         if authenticated:
-            dispatcher.unregister_laptop()
+            dispatcher.unregister_laptop(websocket)
 
 
 def main():

@@ -116,34 +116,26 @@ def stage_pc_file(file_path: str, title: Optional[str] = None) -> Dict[str, Any]
         return {"success": False, "error": f"Unsupported file type: {ext}"}
 
 
-_CHROME_PROCESS: Optional[subprocess.Popen] = None
-
-
-def _is_barehands_window_open() -> bool:
-    """Check if Chrome or browser window running stage.html is currently active."""
-    global _CHROME_PROCESS
-    if _CHROME_PROCESS and _CHROME_PROCESS.poll() is None:
-        return True
+def is_barehands_active() -> bool:
+    """
+    Check if Barehands server is up AND stage.html is actively connected and heartbeating.
+    stage.html emits POST /state at 45Hz. If the window was closed, heartbeats stop immediately.
+    """
+    if not _is_server_running():
+        return False
     try:
-        if sys.platform == "win32":
-            res = subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*8794*stage.html*' } | Measure-Object | Select-Object -ExpandProperty Count"],
-                capture_output=True, text=True, timeout=2.0
-            )
-            count = int(res.stdout.strip() or 0)
-            if count > 0:
-                return True
+        req = urllib.request.Request("http://127.0.0.1:8794/is_active")
+        with urllib.request.urlopen(req, timeout=1.2) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return bool(data.get("active", False))
     except Exception:
-        pass
-    return False
+        return False
 
 
 def _launch_browser(url: str) -> None:
     """Launch browser once, avoiding duplicate windows and camera conflicts."""
-    global _CHROME_PROCESS
-    if _is_barehands_window_open():
-        logger.info("Barehands window is already active. Skipping duplicate browser launch.")
+    if is_barehands_active():
+        logger.info("Barehands stage is actively rendering. Skipping duplicate launch.")
         return
 
     chrome_candidates = [
@@ -154,7 +146,7 @@ def _launch_browser(url: str) -> None:
     for chrome_path in chrome_candidates:
         if os.path.exists(chrome_path):
             try:
-                _CHROME_PROCESS = subprocess.Popen(
+                subprocess.Popen(
                     [chrome_path, f"--app={url}", "--start-maximized"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -179,7 +171,7 @@ def generate_and_stage_3d(prompt: str, mode: str = "holo", player: Optional[Any]
     if not _is_server_running():
         launch_barehands()
         time.sleep(1.2)
-    elif not _is_barehands_window_open():
+    elif not is_barehands_active():
         _launch_browser(BAREHANDS_URL)
         time.sleep(0.8)
 
