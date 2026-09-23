@@ -157,12 +157,12 @@ def launch_barehands(parameters: Optional[Dict[str, Any]] = None, player: Option
                 creationflags=creation_flags,
             )
 
-            # Wait up to 5 seconds for port to open
+            # Brief check (max 1.0s) so the tool returns instantly to JARVIS
             start_wait = time.time()
-            while time.time() - start_wait < 5.0:
-                time.sleep(0.4)
+            while time.time() - start_wait < 1.0:
                 if _is_server_running():
                     break
+                time.sleep(0.15)
 
         except Exception as exc:
             err = f"Failed to start Barehands server: {exc}"
@@ -177,16 +177,19 @@ def launch_barehands(parameters: Optional[Dict[str, Any]] = None, player: Option
     # Launch browser window
     _launch_browser(BAREHANDS_URL)
 
-    # If the user asked to present a specific card/topic, push it to the board
+    # If the user asked to present a card, stage it asynchronously so we don't delay JARVIS speech
     card_title = params.get("card_title") or params.get("title") or ""
     card_body = params.get("card_body") or params.get("body") or ""
     if card_title or card_body or params.get("present_card"):
-        time.sleep(1.5)  # allow browser page to load tracker
-        stage_item(
-            action="present",
-            title=card_title or "TACTICAL INTEL",
-            body=card_body or "Holographic workspace online.",
-        )
+        import threading
+        def _delayed_stage():
+            time.sleep(1.0)
+            stage_item(
+                action="present",
+                title=card_title or "TACTICAL INTEL",
+                body=card_body or "Holographic workspace online.",
+            )
+        threading.Thread(target=_delayed_stage, daemon=True).start()
 
     if player and hasattr(player, "write_log"):
         player.write_log(f"🟢 Barehands online at {BAREHANDS_URL}")

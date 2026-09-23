@@ -108,7 +108,7 @@ def launch_gods_eye(parameters: Optional[Dict[str, Any]] = None, player: Optiona
                     | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
                 )
 
-            # Spawn npm run dev
+            # Spawn npm run dev in background
             cmd = "npm.cmd run dev" if sys.platform == "win32" else "npm run dev"
             _SERVER_PROCESS = subprocess.Popen(
                 cmd,
@@ -120,13 +120,13 @@ def launch_gods_eye(parameters: Optional[Dict[str, Any]] = None, player: Optiona
                 shell=True,
             )
 
-            # Wait up to 8 seconds for Vite to bind port 4173 or 5173
+            # Brief check (max 1.5s) so the tool returns instantly to JARVIS
             start_wait = time.time()
-            while time.time() - start_wait < 8.0:
-                time.sleep(0.8)
+            while time.time() - start_wait < 1.5:
                 target_url = _get_active_url()
                 if target_url:
                     break
+                time.sleep(0.2)
 
             if not target_url:
                 target_url = "http://localhost:4173"
