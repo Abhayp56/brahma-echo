@@ -148,11 +148,18 @@ def is_barehands_active() -> bool:
         return False
 
 
+_LAST_BROWSER_LAUNCH_TS: float = 0.0
+
+
 def _launch_browser(url: str) -> None:
     """Launch browser once, avoiding duplicate windows and camera conflicts."""
-    if is_barehands_active():
-        logger.info("Barehands stage is already open and active. Skipping duplicate launch.")
+    global _LAST_BROWSER_LAUNCH_TS
+    now = time.time()
+    if is_barehands_active() or (now - _LAST_BROWSER_LAUNCH_TS < 10.0):
+        logger.info("Barehands stage is already open or recently launched. Skipping duplicate launch.")
         return
+
+    _LAST_BROWSER_LAUNCH_TS = now
 
     chrome_candidates = [
         os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
