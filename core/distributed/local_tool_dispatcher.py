@@ -211,7 +211,7 @@ class LocalToolDispatcher:
             from actions.barehands import generate_and_stage_3d
             return lambda a: generate_and_stage_3d(
                 prompt=a.get("prompt") or a.get("query") or a.get("name") or "arc reactor",
-                mode=a.get("mode", "holo"),
+                mode=a.get("mode", "solid"),
                 player=self.player
             )
 

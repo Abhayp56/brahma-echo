@@ -118,11 +118,27 @@ def stage_pc_file(file_path: str, title: Optional[str] = None) -> Dict[str, Any]
 
 def is_barehands_active() -> bool:
     """
-    Check if Barehands server is up AND stage.html is actively connected and heartbeating.
-    stage.html emits POST /state at 45Hz. If the window was closed, heartbeats stop immediately.
+    Check if Barehands server is up AND stage.html is actively connected or running.
+    Checks psutil process list for Chrome with stage.html AND the live server heartbeat.
     """
     if not _is_server_running():
         return False
+
+    # 1. Direct OS process inspection via psutil
+    try:
+        import psutil
+        for p in psutil.process_iter(["name", "cmdline"]):
+            try:
+                cmd = p.info.get("cmdline") or []
+                cmd_str = " ".join(cmd).lower()
+                if "8794" in cmd_str and "stage.html" in cmd_str:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except Exception:
+        pass
+
+    # 2. Check live stage heartbeat endpoint
     try:
         req = urllib.request.Request("http://127.0.0.1:8794/is_active")
         with urllib.request.urlopen(req, timeout=1.2) as resp:
@@ -135,7 +151,7 @@ def is_barehands_active() -> bool:
 def _launch_browser(url: str) -> None:
     """Launch browser once, avoiding duplicate windows and camera conflicts."""
     if is_barehands_active():
-        logger.info("Barehands stage is actively rendering. Skipping duplicate launch.")
+        logger.info("Barehands stage is already open and active. Skipping duplicate launch.")
         return
 
     chrome_candidates = [
@@ -162,7 +178,7 @@ def _launch_browser(url: str) -> None:
     logger.info(f"Opened Barehands in default browser: {url}")
 
 
-def generate_and_stage_3d(prompt: str, mode: str = "holo", player: Optional[Any] = None) -> Dict[str, Any]:
+def generate_and_stage_3d(prompt: str, mode: str = "solid", player: Optional[Any] = None) -> Dict[str, Any]:
     """
     Generates a custom 3D model with multiple explodable components on-demand
     and stages it directly onto the Barehands holographic workspace.

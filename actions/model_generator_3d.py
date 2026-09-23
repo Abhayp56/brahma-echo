@@ -29,7 +29,7 @@ _MEDIA_ROOTS = [
 ]
 
 
-def get_default_media_dir(mode: str = "holo") -> Path:
+def get_default_media_dir(mode: str = "solid") -> Path:
     """Finds or creates target media directory for 3D GLB models."""
     for root in _MEDIA_ROOTS:
         if root.parent.exists():
@@ -365,46 +365,46 @@ def _make_generic_parametric(prompt: str) -> Tuple[Any, str]:
 
 
 def _make_cat() -> Tuple[Any, str]:
-    """Generates an explodable Cybernetic Feline / Cat model."""
+    """Generates an explodable Cybernetic Feline / Cat model with vibrant high-visibility materials."""
     scene = trimesh.Scene()
 
-    # 1. Main Torso
+    # 1. Main Torso - Sleek cyber white / pearl titanium armor
     torso = trimesh.creation.box(extents=[0.55, 1.0, 0.45])
     torso.apply_transform(trimesh.transformations.translation_matrix([0, 0, 0.1]))
-    torso.visual.vertex_colors = [50, 60, 75, 255]
+    torso.visual.vertex_colors = [235, 240, 252, 255]
     scene.add_geometry(torso, node_name="cat_torso")
 
-    # 2. Chest & Tactical Collar
+    # 2. Chest & Tactical Collar - Radiant gold
     collar = trimesh.creation.annulus(r_min=0.25, r_max=0.38, height=0.12, sections=24)
     rot_c = trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
     trans_c = trimesh.transformations.translation_matrix([0, 0.55, 0.3])
     collar.apply_transform(trans_c @ rot_c)
-    collar.visual.vertex_colors = [0, 240, 255, 255]
+    collar.visual.vertex_colors = [255, 185, 30, 255]
     scene.add_geometry(collar, node_name="tactical_collar")
 
-    # 3. Head
+    # 3. Head - Sculpted cyber white
     head = trimesh.creation.box(extents=[0.48, 0.42, 0.38])
     head.apply_transform(trimesh.transformations.translation_matrix([0, 0.72, 0.42]))
-    head.visual.vertex_colors = [70, 85, 105, 255]
+    head.visual.vertex_colors = [245, 248, 255, 255]
     scene.add_geometry(head, node_name="cat_head")
 
-    # 4. Pointed Ears (Left & Right)
+    # 4. Pointed Ears (Left & Right) - Glowing electric cyan
     for sign, label in [(-1, "ear_left"), (1, "ear_right")]:
         ear = trimesh.creation.cone(radius=0.12, height=0.32, sections=12)
         trans_e = trimesh.transformations.translation_matrix([sign * 0.18, 0.72, 0.72])
         rot_e = trimesh.transformations.rotation_matrix(sign * 0.15, [0, 1, 0])
         ear.apply_transform(trans_e @ rot_e)
-        ear.visual.vertex_colors = [0, 229, 255, 255]
+        ear.visual.vertex_colors = [0, 235, 255, 255]
         scene.add_geometry(ear, node_name=label)
 
-    # 5. Cybernetic Eyes
+    # 5. Cybernetic Eyes - Glowing neon emerald
     for sign, label in [(-1, "eye_left"), (1, "eye_right")]:
         eye = trimesh.creation.icosphere(subdivisions=1, radius=0.065)
         eye.apply_transform(trimesh.transformations.translation_matrix([sign * 0.14, 0.94, 0.46]))
-        eye.visual.vertex_colors = [0, 255, 200, 255]
+        eye.visual.vertex_colors = [0, 255, 180, 255]
         scene.add_geometry(eye, node_name=label)
 
-    # 6. Four Articulated Legs and Paws
+    # 6. Four Articulated Legs and Paws - Polished titanium silver with cyan glowing pads
     legs_info = [
         (-0.24, 0.35, "leg_front_left"),
         (0.24, 0.35, "leg_front_right"),
@@ -414,12 +414,12 @@ def _make_cat() -> Tuple[Any, str]:
     for lx, ly, label in legs_info:
         leg = trimesh.creation.cylinder(radius=0.08, height=0.5, sections=16)
         leg.apply_transform(trimesh.transformations.translation_matrix([lx, ly, -0.28]))
-        leg.visual.vertex_colors = [90, 100, 115, 255]
+        leg.visual.vertex_colors = [180, 195, 215, 255]
         scene.add_geometry(leg, node_name=label)
 
         foot = trimesh.creation.box(extents=[0.14, 0.18, 0.08])
         foot.apply_transform(trimesh.transformations.translation_matrix([lx, ly + 0.04, -0.52]))
-        foot.visual.vertex_colors = [0, 229, 255, 240]
+        foot.visual.vertex_colors = [0, 235, 255, 255]
         scene.add_geometry(foot, node_name=f"{label}_paw")
 
     # 7. Articulated Tail
@@ -427,14 +427,14 @@ def _make_cat() -> Tuple[Any, str]:
     rot_t1 = trimesh.transformations.rotation_matrix(-math.pi / 4, [1, 0, 0])
     trans_t1 = trimesh.transformations.translation_matrix([0, -0.65, 0.25])
     tail1.apply_transform(trans_t1 @ rot_t1)
-    tail1.visual.vertex_colors = [60, 70, 85, 255]
+    tail1.visual.vertex_colors = [220, 230, 245, 255]
     scene.add_geometry(tail1, node_name="tail_base")
 
     tail2 = trimesh.creation.cylinder(radius=0.04, height=0.35, sections=12)
     rot_t2 = trimesh.transformations.rotation_matrix(math.pi / 6, [1, 0, 0])
     trans_t2 = trimesh.transformations.translation_matrix([0, -0.85, 0.52])
     tail2.apply_transform(trans_t2 @ rot_t2)
-    tail2.visual.vertex_colors = [0, 229, 255, 255]
+    tail2.visual.vertex_colors = [0, 235, 255, 255]
     scene.add_geometry(tail2, node_name="tail_tip")
 
     return scene, "Cybernetic Feline (Cat)"
@@ -444,19 +444,19 @@ def _make_car() -> Tuple[Any, str]:
     """Generates an explodable Cybernetic Sports Car / Vehicle model."""
     scene = trimesh.Scene()
 
-    # 1. Main Chassis
+    # 1. Main Chassis - Glossy Ferrari crimson red
     chassis = trimesh.creation.box(extents=[0.9, 1.8, 0.28])
     chassis.apply_transform(trimesh.transformations.translation_matrix([0, 0, 0]))
-    chassis.visual.vertex_colors = [35, 40, 50, 255]
+    chassis.visual.vertex_colors = [235, 30, 45, 255]
     scene.add_geometry(chassis, node_name="main_chassis")
 
-    # 2. Cockpit Canopy / Cabin
+    # 2. Cockpit Canopy / Cabin - Electric cyan tinted glass
     cabin = trimesh.creation.box(extents=[0.75, 0.9, 0.32])
     cabin.apply_transform(trimesh.transformations.translation_matrix([0, -0.1, 0.28]))
-    cabin.visual.vertex_colors = [0, 229, 255, 180]
+    cabin.visual.vertex_colors = [0, 225, 255, 220]
     scene.add_geometry(cabin, node_name="canopy_cockpit")
 
-    # 3. 4 Wheels
+    # 3. 4 Wheels - Carbon tires with gold rims
     for wx, wy, label in [
         (-0.52, 0.55, "wheel_front_left"),
         (0.52, 0.55, "wheel_front_right"),
@@ -467,19 +467,19 @@ def _make_car() -> Tuple[Any, str]:
         rot_w = trimesh.transformations.rotation_matrix(math.pi / 2, [0, 1, 0])
         trans_w = trimesh.transformations.translation_matrix([wx, wy, -0.05])
         wheel.apply_transform(trans_w @ rot_w)
-        wheel.visual.vertex_colors = [25, 25, 30, 255]
+        wheel.visual.vertex_colors = [255, 195, 35, 255]
         scene.add_geometry(wheel, node_name=label)
 
-    # 4. Front Aero Bumper
+    # 4. Front Aero Bumper - Gunmetal splitter
     bumper = trimesh.creation.box(extents=[0.85, 0.25, 0.16])
     bumper.apply_transform(trimesh.transformations.translation_matrix([0, 0.95, -0.04]))
-    bumper.visual.vertex_colors = [0, 240, 255, 255]
+    bumper.visual.vertex_colors = [45, 50, 60, 255]
     scene.add_geometry(bumper, node_name="aero_splitter")
 
-    # 5. Rear Spoiler Wing
+    # 5. Rear Spoiler Wing - Crimson aero wing
     wing = trimesh.creation.box(extents=[0.95, 0.18, 0.05])
     wing.apply_transform(trimesh.transformations.translation_matrix([0, -0.9, 0.38]))
-    wing.visual.vertex_colors = [255, 60, 60, 255]
+    wing.visual.vertex_colors = [235, 30, 45, 255]
     scene.add_geometry(wing, node_name="rear_spoiler")
 
     return scene, "Cybernetic Sport Vehicle"
@@ -515,7 +515,7 @@ def _make_credit_card(color: str = "red") -> Tuple[Any, str]:
 # Public API
 # ==============================================================================
 
-def generate_model(prompt: str, mode: str = "holo", output_dir: Optional[Path] = None) -> Tuple[Path, str, int]:
+def generate_model(prompt: str, mode: str = "solid", output_dir: Optional[Path] = None) -> Tuple[Path, str, int]:
     """
     Constructs a 3D model scene from a descriptive prompt, exports it as .glb,
     and returns (file_path, display_title, parts_count).
