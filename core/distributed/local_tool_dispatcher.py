@@ -194,4 +194,17 @@ class LocalToolDispatcher:
             from actions.gods_eye import launch_gods_eye
             return lambda a: launch_gods_eye(parameters=a, player=self.player)
 
+        elif tool_name in {"holographic_board", "barehands", "barehands_board", "launch_barehands"}:
+            from actions.barehands import launch_barehands
+            return lambda a: launch_barehands(parameters=a, player=self.player)
+
+        elif tool_name in {"stage_hologram", "present_on_board"}:
+            from actions.barehands import stage_item
+            return lambda a: stage_item(
+                action=a.get("action", "present"),
+                title=a.get("title", ""),
+                body=a.get("body", ""),
+                src=a.get("src")
+            )
+
         return None

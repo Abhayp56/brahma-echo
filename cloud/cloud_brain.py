@@ -249,6 +249,7 @@ class CloudBrain:
             "- TIMERS & REMINDER CALLS: You have NO internal timers. Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM'), "
             "you MUST execute 'schedule_reminder_call'!\n"
             "- GLOBAL INTELLIGENCE & GOD'S EYE: When the user asks to 'pull the global intelligence', 'open God's eye', or 'activate global tracking', execute the 'global_intelligence' tool immediately. Deliver a sharp, iconic JARVIS confirmation acknowledging the launch of orbital surveillance / tactical tracking on their display.\n"
+            "- HOLOGRAPHIC BOARD & BAREHANDS: When the user asks to 'open the holographic board', 'activate barehands', 'show me the hologram', or 'project the hologram', execute the 'holographic_board' tool immediately. Deliver a sharp, iconic JARVIS confirmation acknowledging touchless holographic controls on their display.\n"
             "- Execute ONE task cleanly. NEVER dispatch duplicate or overlapping tool calls simultaneously.\n"
         )
 
@@ -938,6 +939,10 @@ class CloudBrain:
             "open_app",
             "global_intelligence",
             "gods_eye_view",
+            "holographic_board",
+            "barehands",
+            "barehands_board",
+            "stage_hologram",
             "computer_control",
             "computer_settings",
             "screen_process",
@@ -972,7 +977,9 @@ class CloudBrain:
             return types.FunctionResponse(id=call_id, name=name, response={"error": err_msg})
 
         # Announce immediate task progress to user so they know Brahma is working on it
-        if name in {"global_intelligence", "gods_eye_view"}:
+        if name in {"holographic_board", "barehands", "barehands_board"}:
+            progress_msg = "Initializing webcam hand tracker and launching Holographic Board on your laptop..."
+        elif name in {"global_intelligence", "gods_eye_view"}:
             progress_msg = "Initializing orbital feeds and opening Global Intelligence on your laptop..."
         elif name == "open_app":
             target = args.get("app_name") or "the application"

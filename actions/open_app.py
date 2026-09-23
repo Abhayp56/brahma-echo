@@ -235,6 +235,12 @@ def open_app(
         res = launch_gods_eye(parameters, player)
         return res.get("message", "Global intelligence console is now online, sir.")
 
+    # Direct launch for Barehands Touchless Holographic Board
+    if any(k in app_name.lower() for k in ("barehands", "bare hands", "holographic board", "hologram", "touchless board", "spatial board")):
+        from actions.barehands import launch_barehands
+        res = launch_barehands(parameters, player)
+        return res.get("message", "Holographic workspace is now online, sir.")
+
     system   = platform.system()
     launcher = _OS_LAUNCHERS.get(system)
 

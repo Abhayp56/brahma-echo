@@ -204,6 +204,30 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "holographic_board",
+        "description": (
+            "Opens and activates Barehands — the touchless, spatial holographic glass board on the user's laptop screen. "
+            "Uses webcam hand tracking to let the user manipulate floating glass cards, notes, images, and 3D wireframe models "
+            "with their bare hands (pinch, throw, claw force-pull, clap to clear). "
+            "Use this tool whenever the user asks to 'open holographic board', 'activate barehands', 'show me the hologram', "
+            "'launch touchless board', 'project hologram', or 'open spatial board'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "card_title": {
+                    "type": "STRING",
+                    "description": "Optional title for a card or briefing to spotlight on the glass board"
+                },
+                "card_body": {
+                    "type": "STRING",
+                    "description": "Optional text content or briefing data to present on the glass"
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "web_search",
         "description": "Searches the web for any information.",
         "parameters": {
