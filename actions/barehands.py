@@ -252,7 +252,8 @@ def launch_barehands(parameters: Optional[Dict[str, Any]] = None, player: Option
             python_exe = sys.executable or "python"
             creation_flags = 0
             if sys.platform == "win32":
-                creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+                # DETACHED_PROCESS (0x00000008) + CREATE_NEW_PROCESS_GROUP (0x00000200)
+                creation_flags = 0x00000008 | 0x00000200
 
             _SERVER_PROCESS = subprocess.Popen(
                 [python_exe, "server.py"],
