@@ -264,7 +264,6 @@ class TelegramBotService:
         app.add_handler(CommandHandler("time", self._handle_time))
         app.add_handler(CommandHandler("cancel", self._handle_cancel))
         app.add_handler(CommandHandler("key", self._handle_key))
-        app.add_handler(CommandHandler("forge", self._handle_forge))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
         await app.initialize()
@@ -522,28 +521,6 @@ class TelegramBotService:
         except Exception:
             pass
         await update.message.reply_text("✅ Gemini API key updated successfully, boss!")
-
-    async def _handle_forge(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Allows user to trigger Ada-SI Forge Master tool creation over Telegram."""
-        args = context.args or []
-        if not args:
-            await update.message.reply_text("🔨 **Ada-SI Tool Forge**\n\nUsage: `/forge <description of skill>`\nExample: `/forge Create a Solana price tracker`", parse_mode=ParseMode.MARKDOWN)
-            return
-
-        prompt = " ".join(args)
-        await update.message.reply_text(f"🛠️ **Forge Master Initiated!**\nCreating skill for: *'{prompt}'*...\n\n_Planning, generating python code, running sandbox unit tests..._", parse_mode=ParseMode.MARKDOWN)
-
-        try:
-            from core.ada_si_bridge import ada_bridge
-            success, msg, manifest = await ada_bridge.forge_tool_for_prompt(prompt)
-            if success and manifest:
-                tool_name = manifest.get("name", manifest.get("tool_name", "skill"))
-                reply = f"✅ **Skill Forged & Installed!**\n\n**Tool Name**: `{tool_name}`\n**Status**: Installed live in runtime (port 8090)\n\nYou can now use this skill anytime!"
-            else:
-                reply = f"⚠️ **Forge Failed**: {msg}"
-            await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN)
-        except Exception as exc:
-            await update.message.reply_text(f"❌ Error during forging: {exc}")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Incoming Conversational Message Handler
