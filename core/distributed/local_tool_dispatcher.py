@@ -74,7 +74,7 @@ class LocalToolDispatcher:
             if self.speak_fn:
                 self.speak_fn(f"Forging a new Python tool for {tool_name}...")
 
-            f_ok, f_msg, f_manifest = await ada_bridge.forge_tool_for_prompt(prompt_desc)
+            f_ok, f_msg, f_manifest = await ada_bridge.forge_tool_for_prompt(prompt_desc, tool_name=tool_name)
             if f_ok and f_manifest:
                 forged_name = f_manifest.get("name", tool_name)
                 logger.info(f"[LocalToolDispatcher] ✅ Tool '{forged_name}' forged! Executing now...")

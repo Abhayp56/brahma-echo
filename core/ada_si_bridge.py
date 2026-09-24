@@ -193,6 +193,7 @@ class AdaSIBridge:
     async def forge_tool_for_prompt(
         self,
         prompt: str,
+        tool_name: Optional[str] = None,
         creator_model: str = "openai/gpt-4o-mini",
         litellm_url: str = "http://127.0.0.1:4000",
         api_key: str = "sk-ada-dev-key"
@@ -206,9 +207,10 @@ class AdaSIBridge:
         logger.info(f"[AdaSIBridge] Starting Forge Master codegen for prompt: '{prompt}'")
         headers = {"Authorization": f"Bearer {api_key}"}
 
-        import re
-        clean_words = re.findall(r"\w+", prompt.lower())
-        tool_name = "_".join(clean_words[:3]) or "custom_tool"
+        if not tool_name:
+            import re
+            clean_words = re.findall(r"\w+", prompt.lower())
+            tool_name = "_".join(clean_words[:3]) or "custom_tool"
 
         try:
             # 1. Generate plan text via LiteLLM stream
