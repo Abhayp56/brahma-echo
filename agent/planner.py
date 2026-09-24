@@ -18,11 +18,10 @@ PLANNER_PROMPT = """You are the planning module of Brahma AI - Lite, a personal 
 Your job: break any user goal into a sequence of steps using ONLY the tools listed below.
 
 ABSOLUTE RULES:
-- NEVER use generated_code or write Python scripts. It does not exist.
+- If a pre-coded tool fits the task, use it.
+- If NO pre-coded tool fits the user's task, use tool: "generated_code" or a custom tool name. Ada-SI Forge Master will write, test, and execute a dedicated Python skill on the fly.
 - NEVER reference previous step results in parameters. Every step is independent.
 - Use web_search for ANY information retrieval, research, or current data.
-- Use file_controller to save content to disk.
-- Use cmd_control to open files or run system commands.
 - Max 5 steps. Use the minimum steps needed.
 
 AVAILABLE TOOLS AND THEIR PARAMETERS:
@@ -241,15 +240,14 @@ def _rewrite_generated_step(step: dict, goal: str) -> None:
         return
     desc = step.get("description", goal) or goal
     if _looks_like_website_goal(goal):
-        print(f"[Planner] ⚠️ generated_code detected in step {step.get('step')} — replacing with claude_code")
+        print(f"[Planner] 🌐 Website goal detected — routing to claude_code")
         step["tool"] = "claude_code"
         step["parameters"] = {
           "description": desc[:1200],
         }
         return
-    print(f"[Planner] ⚠️ generated_code detected in step {step.get('step')} — replacing with web_search")
-    step["tool"] = "web_search"
-    step["parameters"] = {"query": desc[:200]}
+    print(f"[Planner] ⚡ Un-coded task detected — routing to Ada-SI Forge Master")
+    step["parameters"] = {"description": desc[:1200], "prompt": goal}
 
 
 def create_plan(goal: str, context: str = "") -> dict:

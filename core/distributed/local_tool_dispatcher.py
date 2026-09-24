@@ -55,20 +55,36 @@ class LocalToolDispatcher:
 
         try:
             handler = self._get_tool_handler(tool_name)
-            if not handler:
+            if handler:
+                result = await loop.run_in_executor(None, lambda: handler(args))
                 return {
-                    "success": False,
-                    "result": None,
-                    "error": f"Tool '{tool_name}' is not registered on this desktop node.",
+                    "success": True,
+                    "result": str(result) if result is not None else "Done.",
+                    "error": None,
                 }
+            
+            # Un-coded tool: Route through Ada-SI Bridge & Forge Master
+            logger.info(f"[LocalToolDispatcher] Tool '{tool_name}' not pre-coded. Invoking Ada-SI Bridge & Forge Master...")
+            try:
+                from core.ada_si_bridge import ada_bridge
+                res = await ada_bridge.execute_custom_tool(tool_name, args)
+                if res.get("success"):
+                    return {"success": True, "result": str(res.get("output", "Done.")), "error": None}
+                
+                # If custom tool doesn't exist yet, trigger Forge Master codegen
+                prompt_desc = args.get("description") or args.get("task") or args.get("prompt") or f"Perform desktop task: {tool_name}"
+                logger.info(f"[LocalToolDispatcher] Forging new tool for: '{prompt_desc}'...")
+                f_ok, f_msg, f_manifest = await ada_bridge.forge_tool_for_prompt(prompt_desc)
+                if f_ok and f_manifest:
+                    forged_name = f_manifest.get("name", tool_name)
+                    res_forged = await ada_bridge.execute_custom_tool(forged_name, args)
+                    return {"success": True, "result": str(res_forged.get("output", "Forged & executed successfully.")), "error": None}
+                else:
+                    return {"success": False, "result": None, "error": f"Forge Master failed: {f_msg}"}
 
-            # Run in thread pool to avoid blocking async event loop for long OS actions
-            result = await loop.run_in_executor(None, lambda: handler(args))
-            return {
-                "success": True,
-                "result": str(result) if result is not None else "Done.",
-                "error": None,
-            }
+            except Exception as bridge_exc:
+                logger.error(f"[LocalToolDispatcher] Ada-SI Bridge fallback error: {bridge_exc}")
+                return {"success": False, "result": None, "error": f"Tool '{tool_name}' execution failed: {bridge_exc}"}
 
         except Exception as exc:
             err_msg = str(exc)
