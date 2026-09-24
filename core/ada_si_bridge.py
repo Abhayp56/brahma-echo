@@ -138,6 +138,58 @@ class AdaSIBridge:
             logger.error(f"[AdaSIBridge] Execution error in '{tool_name}': {exc}", exc_info=True)
             return {"success": False, "error": str(exc)}
 
+    async def _forge_via_gemini_direct(self, tool_name: str, prompt: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """Direct Gemini Forge Master fallback when LiteLLM proxy is offline."""
+        logger.info(f"[AdaSIBridge] ⚡ Direct Gemini Forge Master fallback for '{tool_name}'...")
+        try:
+            import google.generativeai as genai
+            api_keys_path = BASE_DIR / "config" / "api_keys.json"
+            gemini_key = ""
+            if api_keys_path.exists():
+                with open(api_keys_path, "r", encoding="utf-8") as f:
+                    gemini_key = json.load(f).get("gemini_api_key", "")
+
+            if not gemini_key:
+                return False, "No Gemini API key found in config/api_keys.json", None
+
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+
+            resp = await asyncio.to_thread(
+                model.generate_content,
+                f"You are Ada-SI Forge Master, an autonomous AI software developer.\n"
+                f"Task Description: {prompt}\nTool Name: {tool_name}\n\n"
+                f"Write a self-contained, working Python script with a top-level `run(**kwargs)` function that executes the task using standard Python libraries (e.g. os, sys, pathlib, subprocess, json, urllib, etc.) and returns a string or dictionary result.\n"
+                f"Output ONLY valid Python code inside ```python ``` blocks."
+            )
+            raw_text = resp.text.strip()
+
+            code = raw_text
+            if "```python" in code:
+                code = code.split("```python")[1].split("```")[0].strip()
+            elif "```" in code:
+                code = code.split("```")[1].split("```")[0].strip()
+
+            manifest = {
+                "name": tool_name,
+                "description": prompt,
+                "version": "1.0.0",
+                "ui": {"template": "list"}
+            }
+
+            manifest_path = self.custom_tools_dir / f"{tool_name}.manifest.json"
+            tool_path = self.custom_tools_dir / f"{tool_name}.py"
+
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            tool_path.write_text(code, encoding="utf-8")
+
+            logger.info(f"[AdaSIBridge] ✅ Direct Gemini Forged tool '{tool_name}' successfully installed!")
+            return True, f"Tool '{tool_name}' forged and installed successfully.", manifest
+
+        except Exception as err:
+            logger.error(f"[AdaSIBridge] Direct Gemini Forge failed: {err}", exc_info=True)
+            return False, f"Direct Gemini Forge error: {err}", None
+
     async def forge_tool_for_prompt(
         self,
         prompt: str,
@@ -154,13 +206,12 @@ class AdaSIBridge:
         logger.info(f"[AdaSIBridge] Starting Forge Master codegen for prompt: '{prompt}'")
         headers = {"Authorization": f"Bearer {api_key}"}
 
-        # Generate a clean tool_name from prompt
         import re
         clean_words = re.findall(r"\w+", prompt.lower())
         tool_name = "_".join(clean_words[:3]) or "custom_tool"
 
         try:
-            # 1. Generate plan text
+            # 1. Generate plan text via LiteLLM stream
             plan_text = ""
             async for kind, delta in draft_tool_plan_stream(
                 tool_name=tool_name,
@@ -174,11 +225,13 @@ class AdaSIBridge:
 
             logger.info(f"[AdaSIBridge] Tool plan created for '{tool_name}'.")
 
-            # 2. Draft code and manifest using draft_tool_code_stream
+            # 2. Draft code and manifest using draft_tool_edit_plan_stream / draft_tool_code_stream
             full_code_text = ""
-            async for kind, delta in draft_tool_code_stream(
+            async for kind, delta in draft_tool_edit_plan_stream(
                 tool_name=tool_name,
-                plan=plan_text,
+                change_description=prompt,
+                existing_tool_code="",
+                existing_requirements=[],
                 creator_model=creator_model,
                 litellm_url=litellm_url,
                 headers=headers
@@ -193,7 +246,6 @@ class AdaSIBridge:
                 "ui": {"template": "list"}
             }
 
-            # 3. Write files to custom_tools directory
             manifest_path = self.custom_tools_dir / f"{tool_name}.manifest.json"
             tool_path = self.custom_tools_dir / f"{tool_name}.py"
 
@@ -204,8 +256,8 @@ class AdaSIBridge:
             return True, f"Tool '{tool_name}' forged and installed successfully.", manifest
 
         except Exception as e:
-            logger.error(f"[AdaSIBridge] Forge failed: {e}", exc_info=True)
-            return False, f"Forge pipeline error: {str(e)}", None
+            logger.warning(f"[AdaSIBridge] LiteLLM proxy unavailable ({e}). Falling back to Direct Gemini Forge Master...")
+            return await self._forge_via_gemini_direct(tool_name, prompt)
 
 
 # Global Singleton Instance
