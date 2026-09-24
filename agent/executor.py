@@ -279,9 +279,40 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None) -> str:
     elif tool == "upload_video":
         from actions.upload_video import run as run_upload_video
         return run_upload_video(parameters=parameters, player=None) or "Done."
+
     else:
-        print(f"[Executor] ⚠️ Unknown tool '{tool}' — no developer fallback is configured")
-        return f"Unknown action: {tool}"
+        # Check if the tool exists in Ada-SI forged skills
+        try:
+            from core.ada_si_bridge import ada_bridge
+            import asyncio
+            
+            logger_msg = f"[Executor] 🚀 Routing tool '{tool}' through Ada-SI Bridge..."
+            print(logger_msg)
+
+            # Synchronous wrapper to run async execute_custom_tool
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                # Running inside active asyncio event loop
+                res = asyncio.run_coroutine_threadsafe(
+                    ada_bridge.execute_custom_tool(tool, parameters or {}), loop
+                ).result(timeout=60)
+            else:
+                res = asyncio.run(ada_bridge.execute_custom_tool(tool, parameters or {}))
+
+            if res.get("success"):
+                return str(res.get("output", "Done."))
+            else:
+                err_text = res.get("error", "Unknown error")
+                print(f"[Executor] ⚠️ Ada-SI Tool execution failed: {err_text}")
+                return f"Tool execution error: {err_text}"
+
+        except Exception as bridge_err:
+            print(f"[Executor] ⚠️ Ada-SI bridge error for '{tool}': {bridge_err}")
+            return f"Unknown action: {tool}"
 
 class AgentExecutor:
 

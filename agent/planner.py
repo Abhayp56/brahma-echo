@@ -256,9 +256,25 @@ def create_plan(goal: str, context: str = "") -> dict:
     import google.generativeai as genai
 
     genai.configure(api_key=_get_api_key())
+    
+    # Dynamically inject Ada-SI custom tools if available
+    effective_prompt = PLANNER_PROMPT
+    try:
+        from core.ada_si_bridge import ada_bridge
+        custom_tools = ada_bridge.list_installed_custom_tools()
+        if custom_tools:
+            extra_tools_text = "\n\nCUSTOM FORGED TOOLS AVAILABLE:\n"
+            for ct in custom_tools:
+                name = ct.get("name", ct.get("tool_name", "unknown"))
+                desc = ct.get("description", "Forged custom tool")
+                extra_tools_text += f"- {name}: {desc}\n"
+            effective_prompt += extra_tools_text
+    except Exception as exc:
+        pass
+
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash-lite",
-        system_instruction=PLANNER_PROMPT
+        system_instruction=effective_prompt
     )
 
     user_input = f"Goal: {goal}"
