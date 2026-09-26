@@ -1,52 +1,39 @@
 """
-actions/vision_operator.py — Autonomous Vision-Action Loop ("Computer Operator")
+actions/vision_operator.py — Non-Vision Headless Autonomous OS Super-Agent
 
-An Anthropic-style autonomous desktop agent that takes a high-level goal, looks at the screen
-using Gemini Vision, determines UI coordinates, clicks, types, navigates, and verifies screen
-updates in a multi-step loop until the objective is accomplished.
+An ultra-fast, lightweight autonomous desktop & OS agent.
+Operates via a non-visual ReAct (Observation-Thought-Action) loop:
+- Inspects system state, active window titles, and foreground applications via Windows native APIs.
+- Generates dynamic self-healing Python scripts (with auto-pip dependency installation) and PowerShell commands.
+- Focuses windows, launches applications, types text, and sends hotkeys without needing screen capture/vision.
 """
 
 from __future__ import annotations
 
-import base64
-import io
 import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("VisionOperator")
+logger = logging.getLogger("AutonomousOperator")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
-MODEL_OPERATOR = "gemini-2.5-flash"
 DEFAULT_MAX_STEPS = 10
-TARGET_IMG_WIDTH = 1280
 
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
-    pyautogui.PAUSE = 0.1
+    pyautogui.PAUSE = 0.05
     _PYAUTOGUI_OK = True
 except ImportError:
     _PYAUTOGUI_OK = False
-
-try:
-    import mss
-    _MSS_OK = True
-except ImportError:
-    _MSS_OK = False
-
-try:
-    import PIL.Image
-    _PIL_OK = True
-except ImportError:
-    _PIL_OK = False
 
 
 def _get_api_key() -> str:
@@ -61,34 +48,71 @@ def _get_api_key() -> str:
     return key
 
 
-def _capture_screen() -> Tuple[Optional[bytes], int, int, float]:
-    """
-    Capture current screen and return (jpeg_bytes, img_width, img_height, scale_factor).
-    Scale factor transforms image pixel coordinates to actual monitor screen coordinates.
-    """
-    if not _MSS_OK or not _PIL_OK or not _PYAUTOGUI_OK:
-        logger.error("Missing required libraries: mss, pillow, or pyautogui.")
-        return None, 0, 0, 1.0
+def _get_active_window_titles() -> List[str]:
+    """Retrieve list of visible top-level window titles on Windows via Win32 API."""
+    titles = []
+    try:
+        import ctypes
+        EnumWindows = ctypes.windll.user32.EnumWindows
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        GetWindowTextW = ctypes.windll.user32.GetWindowTextW
+        GetWindowTextLengthW = ctypes.windll.user32.GetWindowTextLengthW
+        IsWindowVisible = ctypes.windll.user32.IsWindowVisible
 
-    screen_w, screen_h = pyautogui.size()
+        def foreach_window(hwnd, lParam):
+            if IsWindowVisible(hwnd):
+                length = GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    GetWindowTextW(hwnd, buff, length + 1)
+                    title = buff.value.strip()
+                    if title and title not in {"Program Manager", "Default IME", "MSCTFIME UI"}:
+                        titles.append(title)
+            return True
 
-    with mss.mss() as sct:
-        # Capture primary monitor (monitors[1])
-        monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
-        sct_img = sct.grab(monitor)
-        img = PIL.Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+        EnumWindows(EnumWindowsProc(foreach_window), 0)
+    except Exception:
+        try:
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object -ExpandProperty MainWindowTitle"],
+                capture_output=True, text=True, timeout=5
+            )
+            titles = [t.strip() for t in res.stdout.splitlines() if t.strip()]
+        except Exception:
+            pass
+    return titles[:20]
 
-    orig_w, orig_h = img.size
-    scale = 1.0
 
-    if orig_w > TARGET_IMG_WIDTH:
-        scale = orig_w / float(TARGET_IMG_WIDTH)
-        new_h = int(orig_h / scale)
-        img = img.resize((TARGET_IMG_WIDTH, new_h), PIL.Image.Resampling.LANCZOS)
+def _get_foreground_window_title() -> str:
+    """Retrieve title of the currently focused window."""
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buff = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+            return buff.value.strip()
+    except Exception:
+        pass
+    return "Unknown Window"
 
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=82)
-    return buf.getvalue(), img.width, img.height, (screen_w / float(img.width))
+
+def _get_system_state_observation() -> Dict[str, Any]:
+    """Gather real-time non-visual OS system observation."""
+    active_windows = _get_active_window_titles()
+    foreground_window = _get_foreground_window_title()
+    cwd = str(Path.cwd())
+    user_home = str(Path.home())
+    
+    return {
+        "foreground_window": foreground_window,
+        "visible_windows": active_windows,
+        "working_directory": cwd,
+        "user_home": user_home,
+        "os_platform": sys.platform,
+        "python_interpreter": sys.executable,
+    }
 
 
 def _execute_python_script(code: str, timeout: int = 60) -> str:
@@ -184,16 +208,31 @@ def _execute_shell_cmd(command: str, timeout: int = 45) -> str:
         return f"Shell command failed: {exc}"
 
 
+def _focus_window_by_title(title_query: str) -> str:
+    """Bring window matching title_query to foreground."""
+    try:
+        ps_script = (
+            f"$w = Get-Process | Where-Object {{$_.MainWindowTitle -like '*{title_query}*'}} | Select-Object -First 1; "
+            "if ($w) { $h = $w.MainWindowHandle; "
+            "[void] [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic'); "
+            "[Microsoft.VisualBasic.Interaction]::AppActivate($w.Id); 'Focused ' + $w.MainWindowTitle } "
+            "else { 'Window not found' }"
+        )
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, timeout=5)
+        out = res.stdout.strip()
+        return out if out else f"Attempted focus on '{title_query}'."
+    except Exception as e:
+        return f"Failed to focus window: {e}"
+
+
 def _decide_next_step(
     goal: str,
-    jpeg_bytes: bytes,
-    img_w: int,
-    img_h: int,
+    sys_obs: Dict[str, Any],
     step_num: int,
     max_steps: int,
     history: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    """Send screenshot and execution history to Gemini Vision to select next action."""
+    """Send text observation and execution history to Gemini text model to select next action."""
     api_key = _get_api_key()
     if not api_key:
         return None
@@ -209,58 +248,52 @@ def _decide_next_step(
             for h in history
         ) if history else "No previous steps yet."
 
-        prompt = f"""You are the Ultimate Autonomous PC Operator controlling a Windows laptop.
+        obs_json = json.dumps(sys_obs, indent=2)
+
+        prompt = f"""You are the Master Non-Visual Autonomous PC Operator controlling a Windows laptop.
 GOAL: {goal}
 
 Current Step: {step_num} of {max_steps}
+Current System Observation:
+{obs_json}
+
 Action History So Far:
 {history_str}
 
-Attached is the current screenshot of the user's screen ({img_w}x{img_h} pixels).
-Inspect the screenshot carefully, locate any relevant windows, buttons, text fields, or system state, and decide the single best next action.
+Decide the single best next action to accomplish the goal.
 
 Available Actions:
 - "execute_python": Write and execute dynamic Python script on the laptop (requires "code"). Has self-healing auto-pip installation if packages are missing!
 - "run_shell": Execute PowerShell / Windows CLI command (requires "command").
-- "click": Left click at pixel coordinates (requires "x", "y").
-- "double_click": Double click at pixel coordinates (requires "x", "y").
-- "right_click": Right click at pixel coordinates (requires "x", "y").
+- "open_app": Launch application via Windows Search or path (requires "app_name").
+- "focus_window": Focus/Bring an open window to the foreground (requires "window_title").
 - "type": Type text at current cursor location (requires "text", optional "press_enter": true to submit immediately).
 - "press": Press a keyboard key like "enter", "tab", "esc", "backspace" (requires "key").
 - "hotkey": Key combination like "ctrl+t", "alt+f4", "ctrl+a", "ctrl+c", "ctrl+v", "win+r" (requires "keys").
-- "scroll": Scroll page (requires "direction": "up"|"down", "amount": 3).
-- "wait": Wait 1-2 seconds for page or app to load (requires "seconds": 1.5).
-- "open_app": Launch application via Windows Search (requires "app_name").
+- "wait": Wait 1-2 seconds for background processes (requires "seconds": 1.5).
 - "finish": Mark the goal as successfully completed (requires "summary").
 - "fail": Mark as impossible or blocked (requires "summary").
 
-Strategy Rules:
-- If a task can be accomplished programmatically (file manipulation, web fetching, automation scripts, calculations, system config), use "execute_python" or "run_shell" as it is 10x faster and more reliable than GUI clicks!
-- If a task requires interacting with an open GUI app or browser window, use "click", "type", "hotkey", or "open_app".
-- If typing into a search box, set "press_enter": true.
+Strategy Guidelines:
+- Prefer "execute_python" or "run_shell" for 90% of tasks as they are programmatic, robust, fast, and 100% reliable!
+- Use "open_app" or "focus_window" when interacting with desktop GUI applications.
 
 Return ONLY a valid JSON object matching this exact schema (no markdown, no backticks):
 {{
-  "thought": "Concise reasoning of what you see or need to do next",
-  "action": "execute_python | run_shell | click | double_click | right_click | type | press | hotkey | scroll | wait | open_app | finish | fail",
+  "thought": "Concise reasoning of system state and next action",
+  "action": "execute_python | run_shell | open_app | focus_window | type | press | hotkey | wait | finish | fail",
   "code": "optional Python code string to execute",
   "command": "optional PowerShell command string",
-  "x": 640,
-  "y": 360,
+  "app_name": "chrome",
+  "window_title": "Notepad",
   "text": "optional text to type",
   "press_enter": false,
   "key": "optional key name",
   "keys": "optional hotkey string",
-  "direction": "down",
-  "amount": 3,
   "seconds": 1.5,
-  "app_name": "chrome",
   "summary": "final explanation if finish or fail"
 }}
-Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
 """
-
-        image_part = types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg")
 
         fallback_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
         response = None
@@ -270,7 +303,7 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
             try:
                 response = client.models.generate_content(
                     model=model_name,
-                    contents=[prompt, image_part],
+                    contents=prompt,
                     config=types.GenerateContentConfig(
                         temperature=0.2,
                         response_mime_type="application/json",
@@ -280,11 +313,11 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
                     break
             except Exception as e:
                 last_err = e
-                logger.warning(f"Vision model {model_name} error: {e}. Falling back to next model...")
-                time.sleep(0.6)
+                logger.warning(f"Model {model_name} error: {e}. Falling back to next model...")
+                time.sleep(0.5)
 
         if not response or not response.text:
-            raise last_err or RuntimeError("All vision models failed.")
+            raise last_err or RuntimeError("All LLM text models failed.")
 
         raw = response.text.strip()
         match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -295,12 +328,12 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
         return data
 
     except Exception as err:
-        logger.warning(f"Vision decision failed on step {step_num}: {err}")
+        logger.warning(f"Decision failed on step {step_num}: {err}")
         return None
 
 
-def _execute_gui_action(action_data: Dict[str, Any], coord_scale: float) -> str:
-    """Execute physical GUI actions, Python code execution, or shell commands on Windows."""
+def _execute_operator_action(action_data: Dict[str, Any]) -> str:
+    """Execute action (Python script, shell command, window focus, app launch, key presses)."""
     action = action_data.get("action", "").lower().strip()
 
     if action == "execute_python":
@@ -315,77 +348,55 @@ def _execute_gui_action(action_data: Dict[str, Any], coord_scale: float) -> str:
             return "No shell command provided."
         return _execute_shell_cmd(cmd)
 
-    if not _PYAUTOGUI_OK:
-        return "PyAutoGUI is not installed for GUI actions."
-
-    if action == "click":
-        raw_x = action_data.get("x", 0)
-        raw_y = action_data.get("y", 0)
-        x = int(raw_x * coord_scale)
-        y = int(raw_y * coord_scale)
-        pyautogui.moveTo(x, y, duration=0.25)
-        pyautogui.click()
-        return f"Clicked at ({x}, {y})"
-
-    elif action == "double_click":
-        raw_x = action_data.get("x", 0)
-        raw_y = action_data.get("y", 0)
-        x = int(raw_x * coord_scale)
-        y = int(raw_y * coord_scale)
-        pyautogui.moveTo(x, y, duration=0.25)
-        pyautogui.doubleClick()
-        return f"Double-clicked at ({x}, {y})"
-
-    elif action == "right_click":
-        raw_x = action_data.get("x", 0)
-        raw_y = action_data.get("y", 0)
-        x = int(raw_x * coord_scale)
-        y = int(raw_y * coord_scale)
-        pyautogui.moveTo(x, y, duration=0.25)
-        pyautogui.rightClick()
-        return f"Right-clicked at ({x}, {y})"
-
-    elif action == "type":
-        text = str(action_data.get("text", ""))
-        pyautogui.write(text, interval=0.03)
-        if action_data.get("press_enter", False):
-            time.sleep(0.2)
-            pyautogui.press("enter")
-            return f"Typed '{text}' and pressed Enter"
-        return f"Typed '{text}'"
-
-    elif action == "press":
-        key = str(action_data.get("key", "enter")).lower()
-        pyautogui.press(key)
-        return f"Pressed key '{key}'"
-
-    elif action == "hotkey":
-        keys_str = str(action_data.get("keys", ""))
-        keys = [k.strip().lower() for k in keys_str.split("+")]
-        pyautogui.hotkey(*keys)
-        return f"Triggered hotkey '{keys_str}'"
-
-    elif action == "scroll":
-        direction = action_data.get("direction", "down")
-        amt = int(action_data.get("amount", 3))
-        scroll_clicks = -amt * 120 if direction == "down" else amt * 120
-        pyautogui.scroll(scroll_clicks)
-        return f"Scrolled {direction} by {amt}"
-
-    elif action == "wait":
-        secs = min(float(action_data.get("seconds", 1.5)), 5.0)
-        time.sleep(secs)
-        return f"Waited {secs}s"
+    elif action == "focus_window":
+        w_title = str(action_data.get("window_title", ""))
+        if not w_title:
+            return "No window_title provided."
+        return _focus_window_by_title(w_title)
 
     elif action == "open_app":
         app_name = str(action_data.get("app_name", ""))
+        if not _PYAUTOGUI_OK:
+            subprocess.Popen(["cmd.exe", "/c", f"start {app_name}"], shell=True)
+            return f"Launched app via start command: '{app_name}'"
         pyautogui.press("win")
         time.sleep(0.4)
         pyautogui.write(app_name, interval=0.04)
         time.sleep(0.4)
         pyautogui.press("enter")
-        time.sleep(2.0)
+        time.sleep(1.5)
         return f"Opened application '{app_name}'"
+
+    elif action == "type":
+        text = str(action_data.get("text", ""))
+        if _PYAUTOGUI_OK:
+            pyautogui.write(text, interval=0.03)
+            if action_data.get("press_enter", False):
+                time.sleep(0.2)
+                pyautogui.press("enter")
+                return f"Typed '{text}' and pressed Enter"
+            return f"Typed '{text}'"
+        return f"Cannot type text: PyAutoGUI unavailable."
+
+    elif action == "press":
+        key = str(action_data.get("key", "enter")).lower()
+        if _PYAUTOGUI_OK:
+            pyautogui.press(key)
+            return f"Pressed key '{key}'"
+        return f"Cannot press key '{key}': PyAutoGUI unavailable."
+
+    elif action == "hotkey":
+        keys_str = str(action_data.get("keys", ""))
+        if _PYAUTOGUI_OK:
+            keys = [k.strip().lower() for k in keys_str.split("+")]
+            pyautogui.hotkey(*keys)
+            return f"Triggered hotkey '{keys_str}'"
+        return f"Cannot trigger hotkey '{keys_str}': PyAutoGUI unavailable."
+
+    elif action == "wait":
+        secs = min(float(action_data.get("seconds", 1.5)), 5.0)
+        time.sleep(secs)
+        return f"Waited {secs}s"
 
     return f"Processed action '{action}'"
 
@@ -396,11 +407,11 @@ def autonomous_operator(
     speak: Optional[Any] = None,
 ) -> str:
     """
-    Main entry point for Autonomous Vision-Action Loop ("Computer Operator").
+    Main entry point for Non-Vision Headless Autonomous OS Operator.
 
     parameters:
       goal (str, required): Natural language instruction to complete
-      max_steps (int, optional): Max vision-action iterations (default: 10, max: 15)
+      max_steps (int, optional): Max iterations (default: 10, max: 15)
       target_app (str, optional): App to focus or open first
     """
     params = parameters or {}
@@ -411,39 +422,34 @@ def autonomous_operator(
     if not goal:
         return "Error: No goal provided to autonomous_operator."
 
-    if not _PYAUTOGUI_OK:
-        return "Error: PyAutoGUI is not available on this laptop."
-
-    logger.info(f"Starting Autonomous Vision-Action Loop for goal: '{goal}' (max {max_steps} steps)")
+    logger.info(f"Starting Non-Vision Headless OS Super-Agent loop for goal: '{goal}' (max {max_steps} steps)")
     if player:
         player.write_log(f"[Operator] Starting goal: {goal[:50]}...")
 
-    # Optional pre-step: open target app if specified
     if target_app:
         if player:
-            player.write_log(f"[Operator] Launching target app: {target_app}")
-        pyautogui.press("win")
-        time.sleep(0.4)
-        pyautogui.write(target_app, interval=0.04)
-        time.sleep(0.4)
-        pyautogui.press("enter")
-        time.sleep(2.0)
+            player.write_log(f"[Operator] Pre-launching target app: {target_app}")
+        if _PYAUTOGUI_OK:
+            pyautogui.press("win")
+            time.sleep(0.4)
+            pyautogui.write(target_app, interval=0.04)
+            time.sleep(0.4)
+            pyautogui.press("enter")
+            time.sleep(1.5)
 
     history: List[Dict[str, Any]] = []
 
     for step in range(1, max_steps + 1):
         if player:
-            player.write_log(f"[Operator] Step {step}/{max_steps}: Observing screen...")
+            player.write_log(f"[Operator] Step {step}/{max_steps}: Querying system state...")
 
-        # 1. Capture screen
-        jpeg_bytes, img_w, img_h, coord_scale = _capture_screen()
-        if not jpeg_bytes:
-            return "Error capturing screenshot for vision operator."
+        # 1. Non-visual system state observation
+        sys_obs = _get_system_state_observation()
 
-        # 2. Decide next action using Gemini Vision
-        decision = _decide_next_step(goal, jpeg_bytes, img_w, img_h, step, max_steps, history)
+        # 2. Decide next step using LLM text engine
+        decision = _decide_next_step(goal, sys_obs, step, max_steps, history)
         if not decision:
-            logger.warning(f"Step {step}: No valid decision from Gemini.")
+            logger.warning(f"Step {step}: No valid decision from LLM.")
             time.sleep(1.0)
             continue
 
@@ -458,16 +464,16 @@ def autonomous_operator(
             final_msg = summary or thought or "Goal successfully completed."
             if player:
                 player.write_log(f"[Operator] Completed: {final_msg[:50]}")
-            return f"Autonomous Operator completed goal in {step} steps: {final_msg}"
+            return f"Autonomous OS Operator completed goal in {step} steps: {final_msg}"
 
         if action == "fail":
             fail_msg = summary or thought or "Could not accomplish goal."
             if player:
                 player.write_log(f"[Operator] Failed: {fail_msg[:50]}")
-            return f"Autonomous Operator stopped on step {step}: {fail_msg}"
+            return f"Autonomous OS Operator stopped on step {step}: {fail_msg}"
 
         # 3. Execute action
-        exec_desc = _execute_gui_action(decision, coord_scale)
+        exec_desc = _execute_operator_action(decision)
         if player:
             player.write_log(f"[Operator] {exec_desc[:50]}")
 
@@ -479,12 +485,9 @@ def autonomous_operator(
             "exec": exec_desc,
         })
 
-        # Settling pause for UI rendering
-        time.sleep(0.8)
+        time.sleep(0.5)
 
-    # Reached step limit
     return (
-        f"Autonomous Operator completed maximum {max_steps} steps for goal: '{goal}'.\n"
-        f"Last action: {history[-1] if history else 'None'}.\n"
-        f"Check your screen to verify current status."
+        f"Autonomous OS Operator completed maximum {max_steps} steps for goal: '{goal}'.\n"
+        f"Last action result: {history[-1] if history else 'None'}."
     )
