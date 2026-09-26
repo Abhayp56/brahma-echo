@@ -91,15 +91,34 @@ def load_worker_config() -> Dict[str, Any]:
     return default_cfg
 
 
-def load_openrouter_key() -> str:
+def load_llm_credentials() -> Dict[str, str]:
+    """Load LLM credentials for Hermes (OpenRouter primary, Gemini fallback)."""
+    keys = {}
     if API_KEYS_PATH.exists():
         try:
             with open(API_KEYS_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("openrouter_api_key", "").strip()
+                keys = json.load(f)
         except Exception:
             pass
-    return os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+    openrouter_key = keys.get("openrouter_api_key", "").strip() or os.environ.get("OPENROUTER_API_KEY", "").strip()
+    gemini_key = keys.get("gemini_api_key", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip()
+
+    if openrouter_key:
+        return {
+            "api_key": openrouter_key,
+            "provider": "openrouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "model": "nousresearch/hermes-3-llama-3.1-405b:free",
+        }
+    elif gemini_key:
+        return {
+            "api_key": gemini_key,
+            "provider": "google",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "model": "gemini-2.5-flash",
+        }
+    return {}
 
 
 class HermesWorkerNode:
@@ -229,12 +248,16 @@ class HermesWorkerNode:
         if not AIAgent:
             return {"success": False, "result": None, "error": "Hermes AIAgent module not available."}
 
-        openrouter_key = load_openrouter_key()
-        model = "nousresearch/hermes-3-llama-3.1-405b:free"
+        creds = load_llm_credentials()
+        if not creds:
+            return {
+                "success": False,
+                "result": None,
+                "error": "No LLM API key configured for Hermes. Please add openrouter_api_key or gemini_api_key in config/api_keys.json.",
+            }
 
         def _on_progress(text: str):
             logger.info(f"[Hermes Progress] {text}")
-            # Schedule progress payload back over WebSocket
             if self.ws and self.ws.open:
                 try:
                     msg = build_message(
@@ -247,15 +270,14 @@ class HermesWorkerNode:
                     pass
 
         agent_kwargs = {
-            "model": model,
+            "model": creds["model"],
+            "api_key": creds["api_key"],
+            "provider": creds["provider"],
+            "base_url": creds["base_url"],
             "max_iterations": 25,
             "status_callback": lambda t: _on_progress(f"Status: {t}"),
             "tool_progress_callback": lambda t: _on_progress(f"Tool: {t}"),
         }
-        if openrouter_key:
-            agent_kwargs["base_url"] = "https://openrouter.ai/api/v1"
-            agent_kwargs["api_key"] = openrouter_key
-            agent_kwargs["provider"] = "openrouter"
 
         try:
             agent = AIAgent(**agent_kwargs)
