@@ -358,7 +358,8 @@ class _BrowserThread:
     # ── Eylemler ─────────────────────────────────────────────────────────────
 
     async def _go_to(self, url: str) -> str:
-        if not url.startswith("http"):
+        url_lower = url.lower().strip()
+        if not (url_lower.startswith("http://") or url_lower.startswith("https://") or url_lower.startswith("file://") or url_lower.startswith("about:")):
             url = "https://" + url
         page = await self._get_page()
         try:

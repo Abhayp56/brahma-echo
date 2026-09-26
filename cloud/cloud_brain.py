@@ -249,6 +249,7 @@ class CloudBrain:
             "Use 'dev_agent' for code projects; "
             "Use 'autonomous_operator' for single-pass OS operator tasks. "
             "Each tool execution returns real-time results directly to you so you evaluate progress and decide the next action.\n"
+            "- NO DUPLICATE BROWSER LAUNCHES: For opening web URLs or local HTML files, use ONLY 'browser_control' (or 'terminal_agent'). NEVER call 'open_app' ('Chrome') and 'browser_control' together for the same web task!\n"
             "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
             "- LAPTOP-ONLY TOOLS: Use laptop tools ('open_app', 'global_intelligence', 'holographic_board', 'computer_control', 'computer_settings', 'terminal_agent', 'screen_process', 'autonomous_operator') ONLY when the user specifically asks to interact with their physical laptop computer or screen.\n"
             "- WhatsApp Messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone. When checking contact existence, use 'search_contact'—NEVER call send_text to test if a contact exists!\n"
