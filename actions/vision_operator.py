@@ -91,6 +91,99 @@ def _capture_screen() -> Tuple[Optional[bytes], int, int, float]:
     return buf.getvalue(), img.width, img.height, (screen_w / float(img.width))
 
 
+def _execute_python_script(code: str, timeout: int = 60) -> str:
+    """
+    Execute dynamic Python code string on the laptop.
+    Includes auto-healing: if execution fails due to a missing package (ModuleNotFoundError / ImportError),
+    it dynamically installs the missing package via pip and re-executes the script.
+    """
+    temp_dir = Path.home() / "Desktop" / ".agent_scratch"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    script_path = temp_dir / "dynamic_agent_script.py"
+
+    try:
+        script_path.write_text(code, encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+
+        # Check for missing package error to auto-heal
+        if proc.returncode != 0 and ("No module named" in stderr or "ModuleNotFoundError" in stderr or "ImportError" in stderr):
+            match = re.search(r"No module named\s+['\"]?([a-zA-Z0-9_\-]+)['\"]?", stderr)
+            if match:
+                missing_pkg = match.group(1).strip()
+                logger.info(f"Auto-healing missing Python dependency: {missing_pkg}")
+                install_proc = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", missing_pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if install_proc.returncode == 0:
+                    proc_retry = subprocess.run(
+                        [sys.executable, str(script_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    stdout = (proc_retry.stdout or "").strip()
+                    stderr = (proc_retry.stderr or "").strip()
+                    if proc_retry.returncode == 0:
+                        return f"Auto-installed '{missing_pkg}' & executed successfully.\nOutput:\n{stdout}"
+
+        if proc.returncode == 0:
+            return f"Executed Python script successfully.\nOutput:\n{stdout if stdout else '(no stdout output)'}"
+        else:
+            return f"Python script returned exit code {proc.returncode}.\nStderr:\n{stderr}\nStdout:\n{stdout}"
+
+    except subprocess.TimeoutExpired:
+        return f"Python execution timed out after {timeout} seconds."
+    except Exception as exc:
+        return f"Python execution failed: {exc}"
+    finally:
+        try:
+            if script_path.exists():
+                script_path.unlink()
+        except Exception:
+            pass
+
+
+def _execute_shell_cmd(command: str, timeout: int = 45) -> str:
+    """Execute PowerShell / CMD command on Windows with UTF-8 encoding."""
+    ps_cmd = f"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {command}"
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+            cwd=str(Path.home()),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+
+        if proc.returncode == 0:
+            return f"Shell command succeeded (Exit 0):\n{stdout if stdout else '(no output)'}"
+        else:
+            return f"Shell command failed (Exit {proc.returncode}):\nStderr:\n{stderr}\nStdout:\n{stdout}"
+
+    except subprocess.TimeoutExpired:
+        return f"Shell command timed out after {timeout}s."
+    except Exception as exc:
+        return f"Shell command failed: {exc}"
+
+
 def _decide_next_step(
     goal: str,
     jpeg_bytes: bytes,
@@ -112,11 +205,11 @@ def _decide_next_step(
         client = genai.Client(api_key=api_key)
 
         history_str = "\n".join(
-            f"Step {h.get('step')}: Action: {h.get('action')}, Result: {h.get('thought')}"
+            f"Step {h.get('step')}: Action: {h.get('action')}, Result: {h.get('exec') or h.get('thought')}"
             for h in history
         ) if history else "No previous steps yet."
 
-        prompt = f"""You are an autonomous GUI Computer Operator controlling a Windows laptop.
+        prompt = f"""You are the Ultimate Autonomous PC Operator controlling a Windows laptop.
 GOAL: {goal}
 
 Current Step: {step_num} of {max_steps}
@@ -124,30 +217,34 @@ Action History So Far:
 {history_str}
 
 Attached is the current screenshot of the user's screen ({img_w}x{img_h} pixels).
-Inspect the screenshot carefully, locate any relevant buttons, inputs, icons, or text, and decide the single best next action.
+Inspect the screenshot carefully, locate any relevant windows, buttons, text fields, or system state, and decide the single best next action.
 
 Available Actions:
-- "click": Left click at pixel coordinates (requires "x", "y")
-- "double_click": Double click at pixel coordinates (requires "x", "y")
-- "right_click": Right click at pixel coordinates (requires "x", "y")
-- "type": Type text at current cursor location (requires "text", optional "press_enter": true to submit immediately)
-- "press": Press a keyboard key like "enter", "tab", "esc", "backspace" (requires "key")
-- "hotkey": Key combination like "ctrl+t", "alt+f4", "ctrl+a", "ctrl+c", "ctrl+v", "ctrl+s" (requires "keys")
-- "scroll": Scroll page (requires "direction": "up"|"down", "amount": 3)
-- "wait": Wait 1-2 seconds for page or app to load (requires "seconds": 1.5)
-- "open_app": Launch application via Windows Search (requires "app_name")
-- "finish": Mark the goal as successfully completed (requires "summary")
-- "fail": Mark as impossible or blocked (requires "summary")
+- "execute_python": Write and execute dynamic Python script on the laptop (requires "code"). Has self-healing auto-pip installation if packages are missing!
+- "run_shell": Execute PowerShell / Windows CLI command (requires "command").
+- "click": Left click at pixel coordinates (requires "x", "y").
+- "double_click": Double click at pixel coordinates (requires "x", "y").
+- "right_click": Right click at pixel coordinates (requires "x", "y").
+- "type": Type text at current cursor location (requires "text", optional "press_enter": true to submit immediately).
+- "press": Press a keyboard key like "enter", "tab", "esc", "backspace" (requires "key").
+- "hotkey": Key combination like "ctrl+t", "alt+f4", "ctrl+a", "ctrl+c", "ctrl+v", "win+r" (requires "keys").
+- "scroll": Scroll page (requires "direction": "up"|"down", "amount": 3).
+- "wait": Wait 1-2 seconds for page or app to load (requires "seconds": 1.5).
+- "open_app": Launch application via Windows Search (requires "app_name").
+- "finish": Mark the goal as successfully completed (requires "summary").
+- "fail": Mark as impossible or blocked (requires "summary").
 
-Important Rules:
-- If typing a search query or command, set "press_enter": true so it submits in the same step.
-- NEVER repeatedly type the same query into the same box if it is already visible on screen. Instead press "enter" or click submit.
-- Click inside an input field or search bar before typing if it is not already focused.
+Strategy Rules:
+- If a task can be accomplished programmatically (file manipulation, web fetching, automation scripts, calculations, system config), use "execute_python" or "run_shell" as it is 10x faster and more reliable than GUI clicks!
+- If a task requires interacting with an open GUI app or browser window, use "click", "type", "hotkey", or "open_app".
+- If typing into a search box, set "press_enter": true.
 
 Return ONLY a valid JSON object matching this exact schema (no markdown, no backticks):
 {{
-  "thought": "Concise reasoning of what you see on screen and what action to perform next",
-  "action": "click | double_click | right_click | type | press | hotkey | scroll | wait | open_app | finish | fail",
+  "thought": "Concise reasoning of what you see or need to do next",
+  "action": "execute_python | run_shell | click | double_click | right_click | type | press | hotkey | scroll | wait | open_app | finish | fail",
+  "code": "optional Python code string to execute",
+  "command": "optional PowerShell command string",
   "x": 640,
   "y": 360,
   "text": "optional text to type",
@@ -165,7 +262,7 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
 
         image_part = types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg")
 
-        fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        fallback_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
         response = None
         last_err = None
 
@@ -203,11 +300,23 @@ Coordinates (x, y) must strictly be within [0, {img_w}] and [0, {img_h}].
 
 
 def _execute_gui_action(action_data: Dict[str, Any], coord_scale: float) -> str:
-    """Execute the physical GUI action on Windows using PyAutoGUI."""
-    if not _PYAUTOGUI_OK:
-        return "PyAutoGUI is not installed."
-
+    """Execute physical GUI actions, Python code execution, or shell commands on Windows."""
     action = action_data.get("action", "").lower().strip()
+
+    if action == "execute_python":
+        code = str(action_data.get("code", ""))
+        if not code:
+            return "No Python code provided."
+        return _execute_python_script(code)
+
+    elif action == "run_shell":
+        cmd = str(action_data.get("command", ""))
+        if not cmd:
+            return "No shell command provided."
+        return _execute_shell_cmd(cmd)
+
+    if not _PYAUTOGUI_OK:
+        return "PyAutoGUI is not installed for GUI actions."
 
     if action == "click":
         raw_x = action_data.get("x", 0)

@@ -746,10 +746,10 @@ TOOL_DECLARATIONS = [
     {
         "name": "autonomous_operator",
         "description": (
-            "Specialized autonomous computer vision operator agent for complex GUI workflows. "
-            "Use ONLY for multi-step visual workflows where no direct tools exist (e.g. interacting with third-party desktop apps, complex visual forms). "
-            "DO NOT use for simple tasks: use 'open_app' to open applications, 'computer_control' to type/click into open windows, "
-            "'browser_control' or 'web_search' for searching the web, or 'terminal_agent' for terminal commands. "
+            "The master autonomous PC Super-Agent for the user's laptop. "
+            "Executes multi-step laptop operations, visual GUI workflows, dynamic Python execution with self-healing dependency installation, "
+            "PowerShell terminal automation, desktop control, and complex multi-step reasoning directly on the laptop. "
+            "Use this when the user requests autonomous laptop tasks, multi-step desktop automation, or dynamic system operations. "
             "NEVER call other tools concurrently with autonomous_operator."
         ),
         "parameters": {
@@ -757,11 +757,11 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "goal": {
                     "type": "STRING",
-                    "description": "Clear natural language goal for the operator to accomplish on the user's laptop."
+                    "description": "Clear natural language goal or multi-step instruction for the laptop super-agent to accomplish."
                 },
                 "max_steps": {
                     "type": "INTEGER",
-                    "description": "Maximum vision-action steps to attempt (default: 10, max: 15)."
+                    "description": "Maximum autonomous steps to attempt (default: 10, max: 15)."
                 },
                 "target_app": {
                     "type": "STRING",
