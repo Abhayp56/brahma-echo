@@ -236,20 +236,16 @@ class CloudBrain:
             "  * If the user speaks English: Reply smoothly in fluent, executive English.\n"
             "  * If the user speaks Hinglish: Reply in natural, conversational Hinglish.\n\n"
             "[PROACTIVITY, TOOL AWARENESS & EMERGENCY ALERTING]\n"
-            "- Complete Tool Awareness: You possess rich tools: 'daily_briefing', 'get_current_time', 'get_weather', 'calendar_control', 'gmail_control', 'whatsapp_control', 'search_contact', 'get_news', 'todoist_control', 'web_search', 'schedule_reminder_call', and laptop desktop controls ('open_app', 'global_intelligence', 'holographic_board', 'computer_control', 'terminal_agent').\n"
+            "- Complete Tool Awareness: You possess rich cloud tools: 'daily_briefing', 'get_current_time', 'get_weather', 'calendar_control', 'gmail_control', 'whatsapp_control', 'search_contact', 'get_news', 'todoist_control', 'web_search', 'schedule_reminder_call'.\n"
             "- Autonomous Selection: Select and execute the right tools proactively without waiting for permission or asking which tool to invoke.\n"
             "- Emergency Alerting: If any incoming WhatsApp message, unread email, or calendar reminder contains urgent words (e.g. 'urgent', 'emergency', 'help', 'call now', 'important'), PROACTIVELY inform the boss immediately before other tasks!\n"
             "- Daily Briefing Delivery: When executing 'daily_briefing' or greeted on the first call of the day, deliver the FULL comprehensive briefing (exact IST time & date, phone location weather, schedule, emails, WhatsApp messages, and top headlines). Do NOT skip or omit sections!\n\n"
-            "- SINGLE MASTER AI BRAIN & STEP-BY-STEP ORCHESTRATION: You are the ONLY AI brain. You make 100% of all decisions for laptop tasks step-by-step. "
-            "When the user requests multi-step laptop tasks, DO NOT delegate to a separate nested AI loop. Break the task down yourself and execute direct tools sequentially: "
-            "Use 'terminal_agent' to execute PowerShell/CMD commands or Python scripts on the laptop; "
-            "Use 'file_controller' to open, move, scan, or organize files; "
-            "Use 'open_app' to launch applications; "
-            "Use 'computer_control' to type, click, or send hotkeys; "
-            "Use 'dev_agent' for code projects; "
-            "Use 'autonomous_operator' for single-pass OS operator tasks. "
-            "Each tool execution returns real-time results directly to you so you evaluate progress and decide the next action.\n"
-            "- NO DUPLICATE BROWSER LAUNCHES: For opening web URLs or local HTML files, use ONLY 'browser_control' (or 'terminal_agent'). NEVER call 'open_app' ('Chrome') and 'browser_control' together for the same web task!\n"
+            "- PURE CLOUD SERVER ARCHITECTURE: You run as an autonomous Cloud Server AI assistant. All briefings, time queries, weather, news, web searches, reminders, calendar, emails, and WhatsApp messaging execute directly on Cloud APIs.\n"
+            "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
+            "- WhatsApp Messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone. When checking contact existence, use 'search_contact'—NEVER call send_text to test if a contact exists!\n"
+            "- RECIPIENT ISOLATION: When the user says 'send me a message' or 'text me', 'me' refers to the user (Abhay), NEVER to a contact from a previous turn.\n"
+            "- TIMERS & REMINDER CALLS: You have NO internal timers. Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM'), "
+            "you MUST execute 'schedule_reminder_call'!\n"
             "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
             "- LAPTOP-ONLY TOOLS: Use laptop tools ('open_app', 'global_intelligence', 'holographic_board', 'computer_control', 'computer_settings', 'terminal_agent', 'screen_process', 'autonomous_operator') ONLY when the user specifically asks to interact with their physical laptop computer or screen.\n"
             "- WhatsApp Messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone. When checking contact existence, use 'search_contact'—NEVER call send_text to test if a contact exists!\n"
@@ -947,106 +943,14 @@ class CloudBrain:
             res = await execute_calendar_tool(action, args)
             return types.FunctionResponse(id=call_id, name=name, response=res)
 
-        # 2. Desktop actions delegated ONLY if physical laptop hardware/screen is required
-        LAPTOP_ONLY_TOOLS = {
-            "open_app",
-            "global_intelligence",
-            "gods_eye_view",
-            "holographic_board",
-            "barehands",
-            "barehands_board",
-            "stage_hologram",
-            "generate_3d_model",
-            "control_3d_model",
-            "create_3d_model",
-            "explode_model",
-            "assemble_model",
-            "computer_control",
-            "computer_settings",
-            "screen_process",
-            "terminal_agent",
-            "autonomous_operator",
-            "file_controller",
-            "file_processor",
-            "system_manager",
-            "clipboard_processor",
-            "dev_agent",
-            "browser_control",
-            "meeting_assistant",
-            "attention_monitor",
-            "pushup_counter",
-            "calorie_counter",
-        }
-
+        # 2. Pure Cloud execution response for non-cloud tools
         clean_name = name.replace("_", " ")
-
-        # If a tool is not a physical laptop action, execute gracefully on server without laptop failure
-        if name not in LAPTOP_ONLY_TOOLS:
-            self.log(f"⚠️ Tool '{name}' is not a physical laptop action. Handled directly on cloud server.")
-            return types.FunctionResponse(
-                id=call_id,
-                name=name,
-                response={"result": f"Executed '{name}' on cloud server. Task complete."}
-            )
-
-        if not self.dispatcher or not self.dispatcher.is_connected:
-            err_msg = f"Your laptop is currently offline, boss. '{clean_name}' requires your laptop hardware or screen. Please ensure your laptop app is running."
-            self.log(f"ERR: {err_msg}")
-            return types.FunctionResponse(id=call_id, name=name, response={"error": err_msg})
-
-        # Announce immediate task progress to user so they know Brahma is working on it
-        if name in {"generate_3d_model", "create_3d_model"}:
-            p_name = args.get("prompt") or "3D model"
-            progress_msg = f"Synthesizing 3D {p_name} and projecting hologram to your workspace..."
-        elif name in {"control_3d_model", "explode_model", "assemble_model"}:
-            act = args.get("action", "explode")
-            progress_msg = f"Executing {act} configuration on holographic model..."
-        elif name in {"holographic_board", "barehands", "barehands_board"}:
-            progress_msg = "Initializing webcam hand tracker and launching Holographic Board on your laptop..."
-        elif name in {"global_intelligence", "gods_eye_view"}:
-            progress_msg = "Initializing orbital feeds and opening Global Intelligence on your laptop..."
-        elif name == "open_app":
-            target = args.get("app_name") or "the application"
-            progress_msg = f"Opening {target} on your laptop..."
-        elif name == "computer_control":
-            action = args.get("action", "action")
-            progress_msg = f"Executing {action} on your computer..."
-        elif name == "browser_control":
-            progress_msg = "Controlling the browser on your laptop..."
-        elif name == "screen_process":
-            progress_msg = "Inspecting your laptop screen..."
-        elif name == "autonomous_operator":
-            goal = args.get("goal") or "task"
-            progress_msg = f"Starting autonomous vision operator for: {goal}..."
-        elif name == "terminal_agent":
-            cmd = args.get("command") or "command"
-            progress_msg = f"Executing terminal engineer: {cmd[:40]}..."
-        else:
-            progress_msg = f"Working on {clean_name} on your laptop..."
-
-        if self.on_transcript:
-            self.on_transcript("task_progress", progress_msg)
-
-        try:
-            self.log(f"🚀 Dispatching '{name}' to connected laptop worker...")
-            exec_result = await self.dispatcher.execute_on_laptop(name, args)
-            success = exec_result.get("success", False)
-            result_data = exec_result.get("result")
-            error = exec_result.get("error")
-
-            if success:
-                response_payload = {"result": result_data or "Task completed on your laptop."}
-                self.log(f"✅ Laptop executed '{name}': {result_data}")
-            else:
-                response_payload = {"error": error or "Laptop execution failed."}
-                self.log(f"❌ Laptop reported error for '{name}': {error}")
-
-            return types.FunctionResponse(id=call_id, name=name, response=response_payload)
-
-        except Exception as exc:
-            err = f"Failed to dispatch to laptop: {exc}"
-            self.log(f"ERR: {err}")
-            return types.FunctionResponse(id=call_id, name=name, response={"error": err})
+        self.log(f"⚠️ Executed tool '{clean_name}' directly on cloud server.")
+        return types.FunctionResponse(
+            id=call_id,
+            name=name,
+            response={"result": f"Executed '{clean_name}' on cloud server. Task complete."}
+        )
 
     async def run(self):
         """Main lifecycle loop maintaining the Gemini Multimodal Live session."""

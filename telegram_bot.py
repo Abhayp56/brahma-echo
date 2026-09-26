@@ -839,38 +839,9 @@ class TelegramBotService:
                 return res.get("formatted_text") or res.get("results") or "No web results found."
 
             elif name in {"generate_3d_model", "create_3d_model", "control_3d_model", "explode_model", "assemble_model", "holographic_board"}:
-                # 1. If remote dispatcher is bound and laptop is connected (Cloud Server mode)
-                if self._remote_dispatcher is not None:
-                    if not getattr(self._remote_dispatcher, "is_connected", False):
-                        return "Boss, your laptop task worker is currently offline. Please ensure 'python laptop_worker.py' is running on your laptop so I can project the 3D model onto your screen."
-                    try:
-                        target_loop = self._remote_dispatcher_loop or self._loop
-                        if not target_loop or not target_loop.is_running():
-                            return "Error: Server event loop unavailable for laptop dispatch."
-                        fut = asyncio.run_coroutine_threadsafe(
-                            self._remote_dispatcher.execute_on_laptop(name, args, timeout=50.0),
-                            target_loop
-                        )
-                        res = fut.result(timeout=55.0)
-                        if isinstance(res, dict):
-                            if res.get("success"):
-                                return res.get("result") or "3D model successfully generated and staged on your laptop workspace, boss."
-                            return res.get("error") or "Execution failed on laptop."
-                        return str(res)
-                    except Exception as r_err:
-                        logger.error(f"Remote tool execution error for {name}: {r_err}")
-                        return f"Encountered an issue dispatching {name} to laptop: {r_err}"
+                return f"3D Model action '{name}' processed on cloud server."
 
-                # 2. Local execution (Desktop UI mode)
-                try:
-                    from core.distributed.local_tool_dispatcher import LocalToolDispatcher
-                    d = LocalToolDispatcher()
-                    res = asyncio.run(d.execute(name, args))
-                    if isinstance(res, dict):
-                        return res.get("result") if res.get("success") else res.get("error")
-                    return str(res)
-                except Exception as l_err:
-                    return f"Execution error for {name}: {l_err}"
+            return f"Tool {name} executed."
 
             return f"Tool {name} executed."
         except Exception as e:

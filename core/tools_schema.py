@@ -6,62 +6,6 @@ Shared schema defining all assistant capabilities for both local and cloud orche
 
 TOOL_DECLARATIONS = [
     {
-        "name": "computer_settings",
-        "description": (
-            "Controls the computer's OS-level settings and hardware. Use this to change brightness, "
-            "toggle Wi-Fi, change volume, lock the screen, sleep the display, or shut down/restart the computer. "
-            "Also handles keyboard inputs (scrolling, typing, taking screenshots, window snapping)."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "Specific action if known (e.g., 'volume_up', 'volume_set', 'brightness_down', 'lock_screen', 'shutdown')"
-                },
-                "description": {
-                    "type": "STRING",
-                    "description": "Natural language description of what to do (e.g., 'turn the volume to 50%', 'put the computer to sleep')"
-                },
-                "value": {
-                    "type": "STRING",
-                    "description": "Any value associated with the action (e.g., '50' for volume level)"
-                },
-                "confirmed": {
-                    "type": "STRING",
-                    "description": "Pass 'yes' if the user explicitly confirmed a dangerous action like 'shutdown' or 'restart'."
-                }
-            },
-            "required": []
-        }
-    },
-    {
-        "name": "dev_agent",
-        "description": (
-            "An autonomous coding agent that builds full projects, writes code, installs dependencies, "
-            "runs the project, and automatically fixes errors. Use this when the user asks you to 'write a script', "
-            "'build an app', 'code a program', or 'run a project'."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "description": {
-                    "type": "STRING",
-                    "description": "A very detailed description of what the project should do."
-                },
-                "language": {
-                    "type": "STRING",
-                    "description": "The programming language to use (e.g., 'python', 'javascript')"
-                },
-                "project_name": {
-                    "type": "STRING",
-                    "description": "A short, snake_case name for the project folder."
-                }
-            },
-            "required": ["description"]
-        }
-    },
-    {
         "name": "background_monitor",
         "description": (
             "Sets up a background monitor to check crypto prices, system RAM/CPU, or website uptime. "
@@ -503,31 +447,7 @@ TOOL_DECLARATIONS = [
             "required": ["action"]
         }
     },
-    {
-        "name": "computer_control",
-        "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen. Use for direct OS interactions. Do not invoke simultaneously with autonomous_operator.",
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action":      {"type": "STRING", "description": "type | smart_type | click | double_click | right_click | hotkey | press | scroll | move | copy | paste | screenshot | wait | clear_field | focus_window | screen_find | screen_click | random_data | user_data"},
-                "text":        {"type": "STRING", "description": "Text to type or paste"},
-                "x":           {"type": "INTEGER", "description": "X coordinate"},
-                "y":           {"type": "INTEGER", "description": "Y coordinate"},
-                "keys":        {"type": "STRING", "description": "Key combination e.g. 'ctrl+c'"},
-                "key":         {"type": "STRING", "description": "Single key e.g. 'enter'"},
-                "direction":   {"type": "STRING", "description": "up | down | left | right"},
-                "amount":      {"type": "INTEGER", "description": "Scroll amount (default: 3)"},
-                "seconds":     {"type": "NUMBER",  "description": "Seconds to wait"},
-                "title":       {"type": "STRING",  "description": "Window title for focus_window"},
-                "description": {"type": "STRING",  "description": "Element description for screen_find/screen_click"},
-                "type":        {"type": "STRING",  "description": "Data type for random_data"},
-                "field":       {"type": "STRING",  "description": "Field for user_data: name|email|city"},
-                "clear_first": {"type": "BOOLEAN", "description": "Clear field before typing (default: true)"},
-                "path":        {"type": "STRING",  "description": "Save path for screenshot"},
-            },
-            "required": ["action"]
-        }
-    },
+
     {
         "name": "file_processor",
         "description": (
@@ -743,65 +663,7 @@ TOOL_DECLARATIONS = [
             "required": []
         }
     },
-    {
-        "name": "autonomous_operator",
-        "description": (
-            "The master autonomous PC Super-Agent for the user's laptop. "
-            "Executes multi-step laptop operations, visual GUI workflows, dynamic Python execution with self-healing dependency installation, "
-            "PowerShell terminal automation, desktop control, and complex multi-step reasoning directly on the laptop. "
-            "Use this when the user requests autonomous laptop tasks, multi-step desktop automation, or dynamic system operations. "
-            "NEVER call other tools concurrently with autonomous_operator."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "goal": {
-                    "type": "STRING",
-                    "description": "Clear natural language goal or multi-step instruction for the laptop super-agent to accomplish."
-                },
-                "max_steps": {
-                    "type": "INTEGER",
-                    "description": "Maximum autonomous steps to attempt (default: 10, max: 15)."
-                },
-                "target_app": {
-                    "type": "STRING",
-                    "description": "Optional application name to open or bring to focus before starting (e.g. 'chrome', 'spotify', 'notepad')."
-                }
-            },
-            "required": ["goal"]
-        }
-    },
-    {
-        "name": "terminal_agent",
-        "description": (
-            "A self-healing PowerShell & Terminal command execution engineer. "
-            "Executes PowerShell or CMD commands on the user's laptop (e.g., system diagnostics, network checks, ping, "
-            "git operations, software package management with winget/pip/npm). "
-            "If a command fails, it automatically analyzes the error stack trace, generates an automated fix, executes the fix, and retries the command."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "command": {
-                    "type": "STRING",
-                    "description": "The exact PowerShell or CMD command to execute."
-                },
-                "working_dir": {
-                    "type": "STRING",
-                    "description": "Optional directory path to execute the command in."
-                },
-                "auto_heal": {
-                    "type": "BOOLEAN",
-                    "description": "Automatically diagnose and fix errors if command fails (default: true)."
-                },
-                "shell": {
-                    "type": "STRING",
-                    "description": "'powershell' (default) or 'cmd'."
-                }
-            },
-            "required": ["command"]
-        }
-    },
+
     {
         "name": "get_weather",
         "description": (
