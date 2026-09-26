@@ -144,7 +144,7 @@ def _generate_caption(brief: str) -> str:
             "- Plain text only — no quotes, no markdown, no explanations.\n"
             "- Maximum 3500 characters total."
         )
-        r = client.models.generate_content(model="gemini-flash-latest", contents=prompt)
+        r = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         caption = (r.text or "").strip()
         return caption[:3900] if caption else brief
     except Exception as e:

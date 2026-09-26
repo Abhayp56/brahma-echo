@@ -15,7 +15,7 @@ BASE_DIR           = get_base_dir()
 API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
 DESKTOP            = Path.home() / "Desktop"
 MAX_BUILD_ATTEMPTS = 3
-GEMINI_MODEL       = "gemini-flash-latest"
+GEMINI_MODEL       = "gemini-2.5-flash"
 
 
 def _get_api_key() -> str:
@@ -29,7 +29,15 @@ def _get_gemini(model: str = GEMINI_MODEL):
 
     class _W:
         def generate_content(self, contents):
-            return _c.models.generate_content(model=model, contents=contents)
+            for attempt in range(3):
+                try:
+                    return _c.models.generate_content(model=model, contents=contents)
+                except Exception as exc:
+                    err_str = str(exc)
+                    if ("503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str) and attempt < 2:
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    raise exc
 
     return _W()
 
