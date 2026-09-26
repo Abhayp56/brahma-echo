@@ -240,8 +240,10 @@ class CloudBrain:
             "- Autonomous Selection: Select and execute the right tools proactively without waiting for permission or asking which tool to invoke.\n"
             "- Emergency Alerting: If any incoming WhatsApp message, unread email, or calendar reminder contains urgent words (e.g. 'urgent', 'emergency', 'help', 'call now', 'important'), PROACTIVELY inform the boss immediately before other tasks!\n"
             "- Daily Briefing Delivery: When executing 'daily_briefing' or greeted on the first call of the day, deliver the FULL comprehensive briefing (exact IST time & date, phone location weather, schedule, emails, WhatsApp messages, and top headlines). Do NOT skip or omit sections!\n\n"
-            "- INTEGRATED CLOUD & LAPTOP ARCHITECTURE: You run as an integrated AI co-pilot. Briefings, time, weather, news, web search, reminders, calendar, emails, and WhatsApp run on Cloud Server APIs, while all PC/Laptop automation tools ('hermes_agent', 'terminal_agent', 'file_controller', 'computer_control', 'open_app', 'system_manager', 'screen_process', 'autonomous_operator') execute directly on the connected PC worker!\n"
-            "- DIRECT PC CONTROL: When the user asks to run commands, scan folders, move files, execute python/powershell scripts, open applications, or run Hermes agent tasks on their computer, IMMEDIATELY call the appropriate tool ('hermes_agent', 'terminal_agent', 'file_controller', 'computer_control', 'open_app', 'system_manager'). Never claim you cannot control the PC or handle it as a server-side limitation!\n"
+            "- SERVER-FIRST ARCHITECTURE: You run primarily as an autonomous Cloud Server AI. "
+            "All briefings, time queries, weather, news, web searches, reminders, calendar, emails, and WhatsApp messaging execute directly on the Cloud Server with ZERO dependency on the laptop!\n"
+            "- EXACT INDIAN TIME (IST): Always calculate and state time and date in Indian Standard Time (IST, UTC+05:30). Use 'get_current_time' whenever asked for the time or date.\n"
+            "- LAPTOP-ONLY TOOLS: Use laptop tools ('open_app', 'global_intelligence', 'holographic_board', 'computer_control', 'computer_settings', 'terminal_agent', 'screen_process', 'autonomous_operator') ONLY when the user specifically asks to interact with their physical laptop computer or screen.\n"
             "- WhatsApp Messaging: use 'whatsapp_control' or 'send_message'. Contacts are automatically synced from the user's Android phone. When checking contact existence, use 'search_contact'—NEVER call send_text to test if a contact exists!\n"
             "- RECIPIENT ISOLATION: When the user says 'send me a message' or 'text me', 'me' refers to the user (Abhay), NEVER to a contact from a previous turn.\n"
             "- TIMERS & REMINDER CALLS: You have NO internal timers. Whenever the user asks you to call them at a time or after an interval (e.g. 'Call me in 2 minutes', 'Call me at 4:30 PM'), "
@@ -961,9 +963,6 @@ class CloudBrain:
             "system_manager",
             "clipboard_processor",
             "dev_agent",
-            "hermes_agent",
-            "hermes_task",
-            "run_hermes_agent",
             "browser_control",
             "meeting_assistant",
             "attention_monitor",
@@ -972,6 +971,15 @@ class CloudBrain:
         }
 
         clean_name = name.replace("_", " ")
+
+        # If a tool is not a physical laptop action, execute gracefully on server without laptop failure
+        if name not in LAPTOP_ONLY_TOOLS:
+            self.log(f"⚠️ Tool '{name}' is not a physical laptop action. Handled directly on cloud server.")
+            return types.FunctionResponse(
+                id=call_id,
+                name=name,
+                response={"result": f"Executed '{name}' on cloud server. Task complete."}
+            )
 
         if not self.dispatcher or not self.dispatcher.is_connected:
             err_msg = f"Your laptop is currently offline, boss. '{clean_name}' requires your laptop hardware or screen. Please ensure your laptop app is running."

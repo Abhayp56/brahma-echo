@@ -45,7 +45,7 @@ PLUGIN = {
     },
 }
 
-_MODEL             = "gemini-2.5-flash"
+_MODEL             = "gemini-flash-latest"
 _LIVE_SCAN_SECONDS = 1.8     # live preview before the photo is taken
 _FPS               = 25
 _ANIM_MAX_SECONDS  = 25      # animator safety stop

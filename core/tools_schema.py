@@ -62,29 +62,6 @@ TOOL_DECLARATIONS = [
         }
     },
     {
-        "name": "hermes_agent",
-        "description": (
-            "An autonomous multi-step Hermes agent that executes complex laptop tasks, shell commands, "
-            "file management, web research, desktop automation, and multi-step reasoning on the user's laptop. "
-            "Use this when the user requests multi-step autonomous laptop operations, desktop automation, "
-            "or complex multi-step reasoning tasks."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "task": {
-                    "type": "STRING",
-                    "description": "The exact task, goal, or multi-step command for Hermes Agent to execute on the laptop."
-                },
-                "max_iterations": {
-                    "type": "INTEGER",
-                    "description": "Maximum tool-calling iterations allowed (default 25)."
-                }
-            },
-            "required": ["task"]
-        }
-    },
-    {
         "name": "background_monitor",
         "description": (
             "Sets up a background monitor to check crypto prices, system RAM/CPU, or website uptime. "

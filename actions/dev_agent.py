@@ -16,29 +16,21 @@ BASE_DIR         = get_base_dir()
 API_CONFIG_PATH  = BASE_DIR / "config" / "api_keys.json"
 PROJECTS_DIR     = Path.home() / "Desktop" / "JarvisProjects"
 MAX_FIX_ATTEMPTS = 5
-MODEL_PLANNER    = "gemini-2.5-flash"
-MODEL_WRITER     = "gemini-2.5-flash"
+MODEL_PLANNER    = "gemini-flash-latest"
+MODEL_WRITER     = "gemini-flash-latest"
 
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
 
 
-def _get_model(model_name: str = "gemini-2.5-flash"):
+def _get_model(model_name: str):
     from google import genai
     _c = genai.Client(api_key=_get_api_key())
 
     class _W:
         def generate_content(self, contents):
-            for attempt in range(3):
-                try:
-                    return _c.models.generate_content(model=model_name, contents=contents)
-                except Exception as exc:
-                    err_str = str(exc)
-                    if ("503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str) and attempt < 2:
-                        time.sleep(2 * (attempt + 1))
-                        continue
-                    raise exc
+            return _c.models.generate_content(model=model_name, contents=contents)
 
     return _W()
 
