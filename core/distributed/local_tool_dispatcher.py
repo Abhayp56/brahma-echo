@@ -178,6 +178,10 @@ class LocalToolDispatcher:
             from actions.terminal_agent import terminal_agent
             return lambda a: terminal_agent(parameters=a, player=self.player, speak=self.speak_fn)
 
+        elif tool_name in {"hermes_agent", "hermes_task", "run_hermes_agent"}:
+            from actions.hermes_runner import run_hermes_agent
+            return lambda a: run_hermes_agent(parameters=a, player=self.player)
+
         elif tool_name in {"call_user_phone", "connect_call_device"}:
             from actions.brahma_connect import connect_call_device
             return lambda a: connect_call_device(parameters=a, player=self.player)
