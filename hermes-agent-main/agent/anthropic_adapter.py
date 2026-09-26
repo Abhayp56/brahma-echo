@@ -4,7 +4,11 @@ OpenAI-style internals. Auth: API keys (``sk-ant-api*``) -> x-api-key; OAuth set
 payload conversion and credentials live in ``agent/anthropic_{endpoints,message_convert,
 credentials}.py``; import them from there."""
 
-from pm import install_hint
+try:
+    from pm import install_hint
+except (ImportError, ModuleNotFoundError):
+    def install_hint(name: str) -> str:
+        return f"Install {name}"
 import logging
 import math
 import os

@@ -502,17 +502,20 @@ def find_node_executable(command: str) -> str | None:
         base = base.removesuffix(suffix)
     package_name = {"node": "node", "npm": "npm", "npx": "npm"}.get(base)
     if package_name is not None:
-        from pm import installed_package
+        try:
+            from pm import installed_package
+            installed = installed_package(package_name)
+            if installed is not None and installed.binary is not None:
+                if base != "npx":
+                    return str(installed.binary)
+                for name in _candidate_node_command_names("npx"):
+                    candidate = installed.binary.parent / name
+                    if candidate.is_file():
+                        return str(candidate)
+                return None
+        except (ImportError, ModuleNotFoundError):
+            pass
 
-        installed = installed_package(package_name)
-        if installed is not None and installed.binary is not None:
-            if base != "npx":
-                return str(installed.binary)
-            for name in _candidate_node_command_names("npx"):
-                candidate = installed.binary.parent / name
-                if candidate.is_file():
-                    return str(candidate)
-            return None
     if sys.platform != "win32":
         return shutil.which(command)
     directories = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d]
@@ -526,9 +529,11 @@ def find_node_executable(command: str) -> str | None:
 
 def with_hermes_node_path(env: dict[str, str] | None = None) -> dict[str, str]:
     """Compose installed PM npm and its Node dependency without provisioning."""
-    from pm import env_for
-
-    return env_for("npm", base_env=env)
+    try:
+        from pm import env_for
+        return env_for("npm", base_env=env)
+    except (ImportError, ModuleNotFoundError):
+        return dict(env or os.environ)
 
 
 def agent_browser_runnable(path: str | None) -> bool:
@@ -1275,35 +1280,20 @@ AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 
 def venv_bin_dir(venv_dir, *, windows: bool | None = None) -> Path:
     """Frozen updater surface: pre-PM updaters import this name; pm.environments owns it."""
-    from pm.environments import venv_bin_dir as resolve
-
-    return resolve(venv_dir, windows=windows)
+    try:
+        from pm.environments import venv_bin_dir as resolve
+        return resolve(venv_dir, windows=windows)
+    except (ImportError, ModuleNotFoundError):
+        v = Path(venv_dir)
+        is_win = sys.platform == "win32" if windows is None else windows
+        return v / ("Scripts" if is_win else "bin")
 
 
 def project_venv_dir(project_root) -> Path | None:
-    """The project's ``venv`` or ``.venv`` dir when one exists (``uv venv`` defaults to ``.venv``);
-    for an install whose interpreter lives outside the checkout, the running interpreter's venv.
-
-    ``uv venv`` defaults to ``.venv`` while our installers create ``venv``, so both layouts are in the wild.
-    Call sites that only knew about ``venv`` silently no-oped on a ``.venv`` install — that is how the
-    Windows shim-lock preflight skipped itself entirely (#79542). ``venv`` wins when both exist, matching
-    what the installers write.
-
-    Installers that keep the interpreter out of the checkout (``$HERMES_HOME/venvs/<name>``, the layout the
-    shipped Windows launchers assume) have neither, and the ``project_venv_dir(root) or root / "venv"``
-    idiom those call sites share then handed ``uv`` a ``VIRTUAL_ENV`` that does not exist: that one invented
-    path skipped the import probe, reclassified every ``hermes tools`` dependency as missing and failed the
-    reinstall with interpreter errors (#116148). The interpreter running this module is the only truthful
-    answer to "which venv is live", so fall back to it — but only for the checkout it was loaded from. A
-    foreign root (test temp dir, another clone) still resolves to ``None``: handing it someone else's venv
-    would point the callers' writes at the wrong environment.
-    """
     root = Path(project_root)
     in_tree = next((root / n for n in ("venv", ".venv") if (root / n).is_dir()), None)
     if in_tree is not None:
         return in_tree
-    # Out-of-tree install: the path is real by construction (never invented), and non-venv installs
-    # keep today's ``None`` so the ``or root / "venv"`` fallback cannot install into a base interpreter.
     running = Path(sys.prefix)
     if (Path(__file__).resolve().parent == root.resolve()
             and sys.prefix != sys.base_prefix
@@ -1314,24 +1304,21 @@ def project_venv_dir(project_root) -> Path | None:
 
 
 def _venv_installs_checkout(venv: Path, root: Path) -> bool:
-    """Is *venv*'s own ``hermes-agent`` installed from *root*?
-
-    Where this module was loaded from does not answer that: ``PYTHONPATH=<checkout>
-    <other install>/bin/python`` runs one checkout's code on another install's interpreter,
-    and adopting that venv made a dev checkout's update rewrite the Desktop install's venv
-    into an editable install of the dev tree. Every install of a checkout into a venv
-    (installers, ``uv sync``) records the source tree in ``direct_url.json``.
-    """
     import json
     from importlib.metadata import distributions
     from urllib.parse import urlparse
     from urllib.request import url2pathname
 
-    from pm.environments import site_packages
+    try:
+        from pm.environments import site_packages
+        sp = site_packages(venv)
+    except (ImportError, ModuleNotFoundError):
+        is_win = sys.platform == "win32"
+        sp = venv / ("Lib/site-packages" if is_win else f"lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages")
 
-    for dist in distributions(name="hermes-agent", path=[str(site_packages(venv))]):
+    for dist in distributions(name="hermes-agent", path=[str(sp)]):
         try:
-            raw = dist.read_text("direct_url.json")  # windows-footgun: ok — importlib.metadata API, reads utf-8, no encoding=
+            raw = dist.read_text("direct_url.json")
             url = json.loads(raw or "{}").get("url", "")
         except ValueError:
             continue
@@ -1342,9 +1329,13 @@ def _venv_installs_checkout(venv: Path, root: Path) -> bool:
 
 def venv_python_path(venv_dir, *, windows: bool | None = None) -> Path:
     """Frozen updater surface: pre-PM updaters import this name; pm.environments owns it."""
-    from pm.environments import venv_python
-
-    return venv_python(venv_dir, windows=windows)
+    try:
+        from pm.environments import venv_python
+        return venv_python(venv_dir, windows=windows)
+    except (ImportError, ModuleNotFoundError):
+        b = venv_bin_dir(venv_dir, windows=windows)
+        is_win = sys.platform == "win32" if windows is None else windows
+        return b / ("python.exe" if is_win else "python")
 
 
 # First-party roots: an ImportError naming one means our own tree is inconsistent. The

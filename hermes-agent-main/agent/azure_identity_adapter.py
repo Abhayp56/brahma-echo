@@ -11,7 +11,11 @@ Reference: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/co
 
 from __future__ import annotations
 
-from pm import install_hint
+try:
+    from pm import install_hint
+except (ImportError, ModuleNotFoundError):
+    def install_hint(name: str) -> str:
+        return f"Install {name}"
 import contextvars
 import functools
 import logging

@@ -121,6 +121,9 @@ class ToolRegistry:
     def get_toolset_requirements(self) -> Dict[str, dict]:
         return {}
 
+    def check_toolset_requirements(self) -> Dict[str, dict]:
+        return {}
+
     def get_toolset_for_tool(self, tool_name: str) -> Optional[str]:
         return self._toolset_map.get(tool_name, "core")
 
