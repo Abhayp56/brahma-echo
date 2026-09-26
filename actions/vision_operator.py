@@ -276,6 +276,7 @@ Available Actions:
 
 Strategy Guidelines:
 - Prefer "execute_python" or "run_shell" for 90% of tasks as they are programmatic, robust, fast, and 100% reliable!
+- For web searches, opening websites, or YouTube videos, ALWAYS use "execute_python" with `import webbrowser; webbrowser.open('https://...')` or `run_shell` with `start chrome 'https://...'` to navigate directly to the search URL in 1 step!
 - Use "open_app" or "focus_window" when interacting with desktop GUI applications.
 
 Return ONLY a valid JSON object matching this exact schema (no markdown, no backticks):
@@ -295,26 +296,36 @@ Return ONLY a valid JSON object matching this exact schema (no markdown, no back
 }}
 """
 
-        fallback_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
+        fallback_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]
         response = None
         last_err = None
 
         for model_name in fallback_models:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        response_mime_type="application/json",
-                    ),
-                )
-                if response and response.text:
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            response_mime_type="application/json",
+                        ),
+                    )
+                    if response and response.text:
+                        break
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e)
+                    if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "503" in err_str or "UNAVAILABLE" in err_str) and attempt == 0:
+                        logger.warning(f"Rate limit / transient error on model {model_name}: {e}. Retrying in 4s...")
+                        time.sleep(4.0)
+                        continue
+                    logger.warning(f"Model {model_name} error: {e}. Falling back to next model...")
+                    time.sleep(0.5)
                     break
-            except Exception as e:
-                last_err = e
-                logger.warning(f"Model {model_name} error: {e}. Falling back to next model...")
-                time.sleep(0.5)
+
+            if response and response.text:
+                break
 
         if not response or not response.text:
             raise last_err or RuntimeError("All LLM text models failed.")
