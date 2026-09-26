@@ -418,28 +418,23 @@ def autonomous_operator(
     speak: Optional[Any] = None,
 ) -> str:
     """
-    Main entry point for Non-Vision Headless Autonomous OS Operator.
-
-    parameters:
-      goal (str, required): Natural language instruction to complete
-      max_steps (int, optional): Max iterations (default: 10, max: 15)
-      target_app (str, optional): App to focus or open first
+    Main entry point for Laptop Execution Node.
+    Delegates 100% of decision-making to CloudBrain while executing tasks locally on the PC.
     """
     params = parameters or {}
     goal = str(params.get("goal", "")).strip()
-    max_steps = min(int(params.get("max_steps", DEFAULT_MAX_STEPS)), 15)
     target_app = params.get("target_app")
 
     if not goal:
         return "Error: No goal provided to autonomous_operator."
 
-    logger.info(f"Starting Non-Vision Headless OS Super-Agent loop for goal: '{goal}' (max {max_steps} steps)")
+    logger.info(f"Executing laptop worker action for goal: '{goal}'")
     if player:
-        player.write_log(f"[Operator] Starting goal: {goal[:50]}...")
+        player.write_log(f"[Operator] Executing task: {goal[:50]}...")
 
     if target_app:
         if player:
-            player.write_log(f"[Operator] Pre-launching target app: {target_app}")
+            player.write_log(f"[Operator] Launching target app: {target_app}")
         if _PYAUTOGUI_OK:
             pyautogui.press("win")
             time.sleep(0.4)
@@ -448,57 +443,15 @@ def autonomous_operator(
             pyautogui.press("enter")
             time.sleep(1.5)
 
-    history: List[Dict[str, Any]] = []
-
-    for step in range(1, max_steps + 1):
+    # 1. Check if goal is a direct PowerShell command or script
+    if goal.lower().startswith("powershell") or goal.lower().startswith("cmd") or "ping" in goal.lower() or "ipconfig" in goal.lower() or "get-process" in goal.lower():
+        res = _execute_shell_cmd(goal)
         if player:
-            player.write_log(f"[Operator] Step {step}/{max_steps}: Querying system state...")
+            player.write_log("[Operator] Executed shell command successfully.")
+        return f"Laptop worker executed shell task successfully.\n{res}"
 
-        # 1. Non-visual system state observation
-        sys_obs = _get_system_state_observation()
-
-        # 2. Decide next step using LLM text engine
-        decision = _decide_next_step(goal, sys_obs, step, max_steps, history)
-        if not decision:
-            logger.warning(f"Step {step}: No valid decision from LLM.")
-            time.sleep(1.0)
-            continue
-
-        thought = decision.get("thought", "")
-        action = decision.get("action", "").lower().strip()
-        summary = decision.get("summary", "")
-
-        logger.info(f"Step {step}/{max_steps} -> Action: {action} | Thought: {thought}")
-
-        # Check for completion or failure
-        if action == "finish":
-            final_msg = summary or thought or "Goal successfully completed."
-            if player:
-                player.write_log(f"[Operator] Completed: {final_msg[:50]}")
-            return f"Autonomous OS Operator completed goal in {step} steps: {final_msg}"
-
-        if action == "fail":
-            fail_msg = summary or thought or "Could not accomplish goal."
-            if player:
-                player.write_log(f"[Operator] Failed: {fail_msg[:50]}")
-            return f"Autonomous OS Operator stopped on step {step}: {fail_msg}"
-
-        # 3. Execute action
-        exec_desc = _execute_operator_action(decision)
-        if player:
-            player.write_log(f"[Operator] {exec_desc[:50]}")
-
-        # Record to history
-        history.append({
-            "step": step,
-            "action": action,
-            "thought": thought,
-            "exec": exec_desc,
-        })
-
-        time.sleep(0.5)
-
-    return (
-        f"Autonomous OS Operator completed maximum {max_steps} steps for goal: '{goal}'.\n"
-        f"Last action result: {history[-1] if history else 'None'}."
-    )
+    # 2. Otherwise execute as self-healing Python task
+    res = _execute_python_script(goal)
+    if player:
+        player.write_log("[Operator] Executed task on laptop.")
+    return f"Laptop worker executed task successfully.\n{res}"
