@@ -997,12 +997,14 @@
     async function checkStatus() {
       try {
         const res = await fetch('/api/status');
-        if (res.ok) {
+        const data = await res.json();
+        if (data.laptop_connected) {
           statusDot.className = 'dot online';
-          statusText.textContent = 'Cloud Server: Active';
+          const name = data.laptop_info?.device_name || 'Windows Laptop';
+          statusText.textContent = 'Laptop: ' + name + ' (Online)';
         } else {
           statusDot.className = 'dot';
-          statusText.textContent = 'Cloud Server: Reconnecting...';
+          statusText.textContent = 'Laptop: Offline (Start laptop_worker.py)';
         }
       } catch (err) {
         statusDot.className = 'dot';
