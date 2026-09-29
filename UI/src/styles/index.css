@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #050505;
+    color: #f4f4f5;
+  }
+}
+
+/* Glassmorphism utility classes */
+.glass-panel {
+  background: rgba(10, 10, 12, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px 0 rgba(255, 255, 255, 0.02);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-hover:hover {
+  background: rgba(18, 18, 22, 0.75);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.6), 0 0 20px 0 rgba(255, 255, 255, 0.06), inset 0 0 16px 0 rgba(255, 255, 255, 0.04);
+  transform: translateY(-2px);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f4f4f5;
+  transition: all 0.25s ease;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+.glass-button:active {
+  transform: scale(0.98);
+}
+
+.glass-input {
+  background: rgba(8, 8, 10, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.08);
+}
+
+/* Silver Glow */
+.silver-glow {
+  box-shadow: 0 0 25px 2px rgba(255, 255, 255, 0.12);
+}
+
+.silver-glow-lg {
+  box-shadow: 0 0 45px 5px rgba(255, 255, 255, 0.18);
+}
+
+.text-silver-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #a1a1aa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(5, 5, 5, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Pulsing radar lines for 3D elements */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
