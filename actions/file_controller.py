@@ -96,6 +96,11 @@ def create_file(path: str, content: str = "") -> str:
         target = Path(path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        try:
+            from core.undo import push_undo
+            push_undo(f"Create file {target.name}", lambda: (target.unlink() if target.exists() else None, "File deleted")[1])
+        except Exception:
+            pass
         return f"File created: {target.name}"
     except Exception as e:
         return f"Could not create file: {e}"
@@ -156,6 +161,11 @@ def move_file(source: str, destination: str) -> str:
 
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dst))
+        try:
+            from core.undo import push_undo
+            push_undo(f"Move {src.name} → {dst.name}", lambda: (shutil.move(str(dst), str(src)), "File moved back")[1])
+        except Exception:
+            pass
         return f"Moved: {src.name} → {dst.parent.name}/"
 
     except Exception as e:
@@ -181,6 +191,12 @@ def copy_file(source: str, destination: str) -> str:
         else:
             shutil.copy2(str(src), str(dst))
 
+        try:
+            from core.undo import push_undo
+            push_undo(f"Copy {src.name} → {dst.name}", lambda: (dst.unlink() if dst.is_file() else shutil.rmtree(dst), "Copy removed")[1])
+        except Exception:
+            pass
+
         return f"Copied: {src.name} → {dst.parent.name}/"
 
     except Exception as e:
@@ -199,7 +215,13 @@ def rename_file(path: str, new_name: str) -> str:
             return f"A file named '{new_name}' already exists."
 
         target.rename(new_path)
+        try:
+            from core.undo import push_undo
+            push_undo(f"Rename {target.name} → {new_name}", lambda: (new_path.rename(target), "Renamed back")[1])
+        except Exception:
+            pass
         return f"Renamed: {target.name} → {new_name}"
+
 
     except Exception as e:
         return f"Could not rename: {e}"

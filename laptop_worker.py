@@ -166,6 +166,25 @@ class LaptopWorker:
         self.audio_worker = None
         self._tool_lock = asyncio.Lock()
 
+        # Bind Confirmation Gate to Headless/UI player logging
+        try:
+            from core.confirm import bind as bind_confirm
+            bind_confirm(
+                show_cb=lambda title, detail: logger.info(f"⚠️ [CONFIRM_REQUIRED] {title}: {detail}"),
+                hide_cb=lambda: logger.info("⚠️ [CONFIRM_HIDDEN] Pending confirmation resolved"),
+                log_cb=lambda msg: logger.info(f"[ConfirmLog] {msg}"),
+            )
+        except Exception as e:
+            logger.warning(f"Could not bind confirm gate: {e}")
+
+        # Pre-discover local dynamic plugins in plugins/ directory
+        try:
+            from core.plugin_loader import get_plugin_registry
+            registry = get_plugin_registry()
+            registry.discover_and_load()
+        except Exception as e:
+            logger.warning(f"Could not load dynamic plugin registry: {e}")
+
         # Initialize Brahma Connect gateway for Android companion bridge
         self.connect_service = None
         try:
@@ -175,6 +194,7 @@ class LaptopWorker:
             logger.info(f"📱 Brahma Connect Gateway running in background on port {self.connect_service.gateway.config.port} (mDNS active)")
         except Exception as e:
             logger.warning(f"Could not start Brahma Connect Gateway: {e}")
+
 
     def queue_mic_audio(self, raw_pcm: bytes):
         """Callback to send captured microphone audio chunk over WebSocket."""

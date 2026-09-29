@@ -23,6 +23,7 @@ _DEPS_OK = False
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
     from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+    from fastapi.staticfiles import StaticFiles
     import uvicorn
     _DEPS_OK = True
 except ImportError:
@@ -572,6 +573,10 @@ class DashboardServer:
 
     def _build_app(self) -> "FastAPI":
         app = FastAPI(docs_url=None, redoc_url=None)
+        
+        assets_dir = STATIC_DIR / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
         def _auth(req: Request) -> bool:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
@@ -874,6 +879,17 @@ class DashboardServer:
                             await self._command_queue.put(t)
                             if self._wake_callback:
                                 self._wake_callback()
+                    elif data.get("type") == "action":
+                        action = data.get("action", "")
+                        if action == "gods_eye":
+                            import subprocess
+                            try:
+                                subprocess.Popen(["python", "gods-eye-view-main.py"], cwd=str(BASE_DIR))
+                            except Exception as e:
+                                print(f"Failed to start Gods Eye: {e}")
+                        elif action == "holographic_board":
+                            # To be implemented
+                            pass
             except WebSocketDisconnect:
                 pass
             finally:

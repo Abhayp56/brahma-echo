@@ -222,4 +222,32 @@ class LocalToolDispatcher:
                 player=self.player
             )
 
+        elif tool_name in {"undo", "undo_last", "rollback"}:
+            from core.undo import undo_last
+            return lambda a: undo_last()
+
+        elif tool_name in {"undo_history", "can_undo"}:
+            from core.undo import history, can_undo
+            return lambda a: {"can_undo": can_undo(), "history": history()}
+
+        elif tool_name in {"confirm_resolve", "confirm_action"}:
+            from core.confirm import resolve
+            return lambda a: resolve(accepted=a.get("accepted", True))
+
+        elif tool_name in {"system_monitor", "system_status", "system_telemetry"}:
+            from actions.system_monitor import get_system_status
+            return lambda a: get_system_status()
+
+        # Check dynamic plugin registry for modular custom tools in plugins/
+        try:
+            from core.plugin_loader import get_plugin_registry
+            registry = get_plugin_registry()
+            registry.discover_and_load()
+            plugin_handler = registry.get_handler(tool_name)
+            if plugin_handler:
+                return lambda a: plugin_handler(a, player=self.player)
+        except Exception as e:
+            logger.debug(f"Plugin lookup error for '{tool_name}': {e}")
+
         return None
+

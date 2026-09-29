@@ -596,10 +596,6 @@ _DANGEROUS_ACTIONS = {"restart", "shutdown"}
 
 
 def _detect_action(description: str) -> dict:
-
-    from google import genai as _genai
-    _client = _genai.Client(api_key=_get_api_key())
-
     available = ", ".join(sorted(ACTION_MAP.keys())) + \
                 ", volume_set, type_text, press_key, reload_n"
 
@@ -622,11 +618,21 @@ Rules:
 - Return ONLY the JSON, no explanation, no markdown."""
 
     try:
+        from core.gemini import as_json
+        res = as_json(prompt, tier="fast")
+        if isinstance(res, dict) and "action" in res:
+            return res
+    except Exception as e:
+        print(f"[Settings] Intent detection ladder fallback: {e}")
+
+    try:
+        from google import genai as _genai
+        _client = _genai.Client(api_key=_get_api_key())
         resp = _client.models.generate_content(model="gemini-flash-lite-latest", contents=prompt)
         text = re.sub(r"```(?:json)?", "", resp.text).strip().rstrip("`").strip()
         return json.loads(text)
     except Exception as e:
-        print(f"[Settings] Intent detection failed: {e}")
+        print(f"[Settings] Direct intent detection failed: {e}")
         return {"action": description.lower().replace(" ", "_"), "value": None}
 
 def computer_settings(
@@ -658,7 +664,19 @@ def computer_settings(
     if player:
         player.write_log(f"[Settings] {action}")
 
-    if action in _DANGEROUS_ACTIONS:
+    # Human Verification Gate for dangerous or disruptive operations
+    if action in _DANGEROUS_ACTIONS or action == "toggle_wifi":
+        try:
+            from core.confirm import request as confirm_request
+            if action == "restart":
+                return confirm_request("restart", "Restart Computer", "System reboot operation", restart_computer)
+            elif action == "shutdown":
+                return confirm_request("shutdown", "Shutdown Computer", "System power-off operation", shutdown_computer)
+            elif action == "toggle_wifi":
+                return confirm_request("wifi", "Toggle Wi-Fi", "Network connection toggle", toggle_wifi)
+        except Exception as e:
+            print(f"[Settings] Confirmation request fallback: {e}")
+
         confirmed = str(params.get("confirmed", "")).lower()
         if confirmed not in ("yes", "true", "1", "confirm"):
             return (
@@ -668,10 +686,17 @@ def computer_settings(
 
     if action == "volume_set":
         try:
-            volume_set(int(value or 50))
-            return f"Volume set to {value}%."
+            target_vol = int(value or 50)
+            volume_set(target_vol)
+            try:
+                from core.undo import push_undo
+                push_undo(f"volume → {target_vol}%", lambda: volume_set(50))
+            except Exception:
+                pass
+            return f"Volume set to {target_vol}%."
         except Exception as e:
             return f"Could not set volume: {e}"
+
 
     if action in ("type_text", "write_on_screen", "type", "write"):
         text = str(value or params.get("text", "")).strip()
