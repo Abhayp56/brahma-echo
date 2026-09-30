@@ -299,45 +299,14 @@ export const useAryaStore = create<AryaState>((set, get) => ({
 
   sendUserQuery: async (text: string) => {
     if (!text.trim()) return;
-
-    // 1. Add user message
-    get().addTranscriptMessage({
-      sender: 'user',
-      text,
-    });
-
-    // 2. State transition: listening -> thinking
+    
+    // Add user message locally for immediate feedback
+    get().addTranscriptMessage({ sender: 'user', text });
     set({ voiceState: 'thinking' });
-
-    // Simulate AI reasoning delay
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    // 3. State transition: thinking -> speaking
-    set({ voiceState: 'speaking' });
-
-    // Generate responsive reply based on query keywords
-    const lower = text.toLowerCase();
-    let replyText = `I have processed your request: "${text}". Desktop agents and memory registers updated.`;
-
-    if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('meeting')) {
-      replyText = `You have 3 meetings scheduled today. Next sync is "Product Roadmap" at 10:30 AM in Virtual Room A. Shall I prepare the briefing notes?`;
-    } else if (lower.includes('metric') || lower.includes('cpu') || lower.includes('system') || lower.includes('ram')) {
-      replyText = `System status is optimal. CPU is load-balanced at 24%, RAM usage is 15.3 GB out of 32 GB, and Neural Link latency is 14ms.`;
-    } else if (lower.includes('telegram') || lower.includes('whatsapp') || lower.includes('phone') || lower.includes('call')) {
-      replyText = `Active channel channels check: Android companion phone-bridge is ready. You can test integrations using the top-bar panel.`;
-    } else if (lower.includes('hello') || lower.includes('hi') || lower.includes('arya')) {
-      replyText = `Hello Alex! All automated desktop routines are running smoothly. What would you like me to organize next?`;
-    }
-
-    get().addTranscriptMessage({
-      sender: 'arya',
-      text: replyText,
-    });
-
-    // Speak for 2.5s then return to idle
-    setTimeout(() => {
-      set({ voiceState: 'idle' });
-    }, 2800);
+    
+    // Send to backend via websocket
+    const { wsService } = await import('../services/websocket');
+    wsService.sendCommand(text);
   },
 
   triggerMockConversationStream: () => {

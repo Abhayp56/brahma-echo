@@ -19,24 +19,9 @@ class MockMetricsService implements IMetricsService {
     // Initial emit
     callback({ ...this.currentMetrics });
 
-    const interval = setInterval(() => {
-      // Simulate live fluctuate CPU (12% - 42%), RAM (45% - 54%), Latency (8 - 24 ms)
-      const cpuNoise = Math.floor(Math.sin(Date.now() / 1500) * 12 + 28);
-      const ramNoise = Math.floor(Math.cos(Date.now() / 3000) * 4 + 48);
-      const latencyNoise = Math.floor(Math.sin(Date.now() / 800) * 6 + 14);
+    
 
-      this.currentMetrics = {
-        ...this.currentMetrics,
-        cpuUsage: Math.max(8, Math.min(98, cpuNoise)),
-        ramUsage: Math.max(20, Math.min(95, ramNoise)),
-        ramUsedGB: parseFloat(((ramNoise / 100) * 32.0).toFixed(1)),
-        latencyMs: Math.max(5, Math.min(120, latencyNoise)),
-      };
-
-      callback({ ...this.currentMetrics });
-    }, 2000);
-
-    return () => clearInterval(interval);
+    return () => {};
   }
 }
 

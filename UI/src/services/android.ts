@@ -1,56 +1,28 @@
 import { IAndroidService } from './types';
 import { IntegrationStatus } from '../types/arya';
 
-class MockAndroidService implements IAndroidService {
-  private status: IntegrationStatus = {
-    connected: false,
-    statusText: 'Disconnected',
-  };
-
+class AndroidService implements IAndroidService {
   async requestPairingData(): Promise<{ qrCodeValue: string; pairingCode: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    return {
-      qrCodeValue: `arya://pair-companion?code=${randomCode}&device=DesktopHost`,
-      pairingCode: `${randomCode.slice(0, 3)}-${randomCode.slice(3)}`,
-    };
+    return { qrCodeValue: 'dummy_qr_code', pairingCode: '123456' };
   }
-
   async simulatePairing(): Promise<{ success: boolean; message: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 1800));
-
-    this.status = {
-      connected: true,
-      statusText: 'Connected (Pixel 8 Pro)',
-      connectedAt: new Date().toISOString(),
-      details: {
-        deviceName: 'Pixel 8 Pro',
-        battery: '88%',
-        duplexAudioActive: true,
-      },
-    };
-
-    return {
-      success: true,
-      message: 'Android Companion App linked! Full-duplex phone voice stream active.',
-    };
+    try {
+        const res = await fetch('/api/phone/qr');
+        const data = await res.json();
+        return { success: res.ok, message: data.message || 'Ready' };
+    } catch(e) { return { success: false, message: 'Error' }; }
   }
-
   async disconnect(): Promise<{ success: boolean; message: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    this.status = {
-      connected: false,
-      statusText: 'Disconnected',
-    };
-    return {
-      success: true,
-      message: 'Android companion app unlinked.',
-    };
+    return { success: false, message: 'Not supported' };
   }
-
   async getStatus(): Promise<IntegrationStatus> {
-    return this.status;
+    try {
+      const res = await fetch('/api/phone/status');
+      const data = await res.json();
+      return { connected: data.status === 'online', statusText: data.status === 'online' ? 'Connected via WSS' : 'Disconnected' };
+    } catch (e) {
+      return { connected: false, statusText: 'Disconnected' };
+    }
   }
 }
-
-export const androidService = new MockAndroidService();
+export const androidService = new AndroidService();

@@ -27,7 +27,7 @@ export const AndroidModal: React.FC = () => {
 
   useEffect(() => {
     if (isOpen && !androidStatus.connected) {
-      androidService.requestPairingData().then((res) => {
+      androidService.requestPairingData().then((res: { qrCodeValue: string, pairingCode: string }) => {
         setQrValue(res.qrCodeValue);
         setPairingCode(res.pairingCode);
       });

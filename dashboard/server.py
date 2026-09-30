@@ -857,6 +857,7 @@ class DashboardServer:
             return JSONResponse({"error": "Not found"}, status_code=404)
 
         @app.websocket("/ws")
+        @app.websocket("/ws/web")
         async def ws_ep(websocket: WebSocket, token: str = ""):
             tok = token.strip()
             if not tok or tok not in self._tokens:
@@ -872,9 +873,10 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_json()
-                    if data.get("type") == "command":
+                    msg_type = data.get("type")
+                    if msg_type in ("command", "text_command", "action"):
                         enc = data.get("enc", "")
-                        t   = self._decrypt(tok, enc) if enc else (data.get("text") or "").strip()
+                        t   = self._decrypt(tok, enc) if enc else (data.get("text") or data.get("action") or "").strip()
                         if t:
                             await self._command_queue.put(t)
                             if self._wake_callback:

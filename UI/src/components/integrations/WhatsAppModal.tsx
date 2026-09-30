@@ -27,7 +27,7 @@ export const WhatsAppModal: React.FC = () => {
 
   useEffect(() => {
     if (isOpen && !whatsappStatus.connected) {
-      whatsappService.requestQRCode().then((res) => {
+      whatsappService.requestQRCode().then((res: { qrCodeValue: string }) => {
         setQrValue(res.qrCodeValue);
         setScanState('idle');
       });

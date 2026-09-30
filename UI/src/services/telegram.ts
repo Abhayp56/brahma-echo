@@ -1,62 +1,36 @@
 import { ITelegramService } from './types';
 import { TelegramConfig, IntegrationStatus } from '../types/arya';
 
-class MockTelegramService implements ITelegramService {
-  private status: IntegrationStatus = {
-    connected: false,
-    statusText: 'Disconnected',
-  };
-
+class TelegramService implements ITelegramService {
   async connect(config: TelegramConfig): Promise<{ success: boolean; message: string }> {
-    // Validate empty fields
-    if (!config.botToken.trim() || !config.botName.trim() || !config.chatId.trim()) {
-      return {
-        success: false,
-        message: 'Please fill in all required Telegram bot fields.',
-      };
+    try {
+      const res = await fetch('/api/telegram/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      const data = await res.json();
+      return { success: res.ok, message: data.message || 'Configured telegram' };
+    } catch (e) {
+      return { success: false, message: 'Network error' };
     }
-
-    if (!config.botToken.includes(':')) {
-      return {
-        success: false,
-        message: 'Invalid Telegram bot token format. Token must contain a colon (e.g., 123456:ABC...).',
-      };
-    }
-
-    // Simulate connection delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    this.status = {
-      connected: true,
-      statusText: `Connected to @${config.botName.replace(/^@/, '')}`,
-      connectedAt: new Date().toISOString(),
-      details: {
-        botName: config.botName,
-        chatId: config.chatId,
-      },
-    };
-
-    return {
-      success: true,
-      message: `Telegram bot @${config.botName} linked successfully! Notifications active.`,
-    };
   }
 
   async disconnect(): Promise<{ success: boolean; message: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    this.status = {
-      connected: false,
-      statusText: 'Disconnected',
-    };
-    return {
-      success: true,
-      message: 'Telegram integration disconnected.',
-    };
+    return { success: false, message: 'Not supported' };
   }
 
   async getStatus(): Promise<IntegrationStatus> {
-    return this.status;
+    try {
+      const res = await fetch('/api/telegram/status');
+      const data = await res.json();
+      return {
+        connected: data.configured,
+        statusText: data.configured ? `Bot Token: ${data.bot_token.substring(0, 10)}...` : 'Disconnected',
+      };
+    } catch (e) {
+      return { connected: false, statusText: 'Disconnected' };
+    }
   }
 }
-
-export const telegramService = new MockTelegramService();
+export const telegramService = new TelegramService();

@@ -1418,6 +1418,7 @@ async def websocket_phone_companion(websocket: WebSocket):
 
 
 @app.websocket("/ws/web")
+@app.websocket("/ws")
 async def websocket_web(websocket: WebSocket):
     """Real-time WebSocket connection for web browser interface."""
     await websocket.accept()
@@ -1426,8 +1427,11 @@ async def websocket_web(websocket: WebSocket):
         while True:
             raw = await websocket.receive_text()
             data = json.loads(raw)
-            if data.get("type") == "text_command":
-                text = data.get("text", "").strip()
+            msg_type = data.get("type")
+            if msg_type in ("text_command", "command", "action"):
+                # Handle actions from the new UI as well
+                text = data.get("text", "").strip() or data.get("action", "").strip()
+
                 if text and brain:
                     await brain.handle_text_command(text)
     except WebSocketDisconnect:
