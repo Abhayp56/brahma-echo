@@ -14,6 +14,13 @@ Provides 8 keyless, high-speed public web APIs running directly on the Cloud Ser
 
 from __future__ import annotations
 
+import time
+from datetime import datetime, timezone
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 import asyncio
 import json
 import logging
@@ -208,6 +215,7 @@ def get_weather_sync(
             "location": resolved_name,
             "lat": lat,
             "lon": lon,
+            "temperature": current.get("temperature_2m", 28.0),
             "temperature_c": current.get("temperature_2m", 28.0),
             "temperature_f": round((current.get("temperature_2m", 28.0) * 9 / 5) + 32, 1),
             "apparent_temperature_c": current.get("apparent_temperature", current.get("temperature_2m", 28.0)),
@@ -230,6 +238,7 @@ def get_weather_sync(
             "location": resolved_name,
             "lat": lat,
             "lon": lon,
+            "temperature": 28.0,
             "temperature_c": 28.0,
             "temperature_f": 82.4,
             "apparent_temperature_c": 29.5,
