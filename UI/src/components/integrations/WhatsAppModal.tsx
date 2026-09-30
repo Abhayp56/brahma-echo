@@ -93,7 +93,11 @@ export const WhatsAppModal: React.FC = () => {
             >
               {qrValue ? (
                 <div className="bg-white p-4 rounded-xl inline-block shadow-inner relative">
-                  <QRCodeSVG value={qrValue} size={180} level="H" />
+                  {qrValue.startsWith('data:image') ? (
+                    <img src={qrValue} alt="WhatsApp Pairing QR" className="w-[180px] h-[180px] object-contain" />
+                  ) : (
+                    <QRCodeSVG value={qrValue} size={180} level="H" />
+                  )}
                   {/* Laser Scanning Line Animation */}
                   {scanState === 'scanning' && (
                     <motion.div

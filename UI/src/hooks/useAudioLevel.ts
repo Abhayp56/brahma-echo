@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAryaStore } from '../store/useAryaStore';
+import { audioPlayer } from '../services/audioPlayer';
 
 export interface AudioLevels {
   level: number; // Overall smoothed 0 to 1
@@ -10,12 +11,25 @@ export interface AudioLevels {
 
 export const useAudioLevel = (): React.RefObject<AudioLevels> => {
   const micEnabled = useAryaStore((s) => s.micEnabled);
+  const voiceState = useAryaStore((s) => s.voiceState);
   const levelsRef = useRef<AudioLevels>({ level: 0, low: 0, mid: 0, high: 0 });
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // When AI is speaking, poll the audioPlayer's analyser
+    const aiPoll = setInterval(() => {
+      const aiLevels = audioPlayer.getAudioLevels();
+      if (aiLevels) {
+        levelsRef.current = aiLevels;
+      }
+    }, 25);
+
+    return () => clearInterval(aiPoll);
+  }, []);
 
   useEffect(() => {
     if (!micEnabled) {

@@ -73,10 +73,23 @@ export const AndroidModal: React.FC = () => {
             </div>
             <h3 className="text-base font-bold text-white">Android Device Linked</h3>
             <div className="glass-panel p-3 rounded-xl border-white/10 text-xs font-mono text-zinc-300 space-y-1">
-              <div>Device: {androidStatus.details?.deviceName || 'Pixel 8 Pro'}</div>
-              <div>Audio Pipeline: Full-Duplex Low Latency (14ms)</div>
-              <div>Battery Status: {androidStatus.details?.battery || '88%'}</div>
+              <div>Device: {androidStatus.details?.name || androidStatus.details?.deviceName || 'Android Companion'}</div>
+              <div>Status: Full-Duplex Cloud WSS Voice Bridge</div>
             </div>
+            <GlassButton
+              variant="default"
+              size="sm"
+              onClick={async () => {
+                const res = await (androidService as any).triggerCall('Direct Call from Web UI');
+                useAryaStore.getState().addToast({
+                  title: res.success ? 'Calling Android Device' : 'Call Failed',
+                  description: res.message,
+                  type: res.success ? 'success' : 'error',
+                });
+              }}
+            >
+              📞 Call Phone Now
+            </GlassButton>
           </div>
         ) : (
           <>
@@ -85,7 +98,11 @@ export const AndroidModal: React.FC = () => {
               <div className="glass-panel p-4 rounded-2xl border-white/20 relative overflow-hidden shadow-[0_0_30px_rgba(255,255,255,0.1)]">
                 {qrValue ? (
                   <div className="bg-white p-3 rounded-xl inline-block relative">
-                    <QRCodeSVG value={qrValue} size={150} level="M" />
+                    {qrValue.startsWith('data:image') ? (
+                      <img src={qrValue} alt="Android Pairing QR" className="w-[150px] h-[150px] object-contain" />
+                    ) : (
+                      <QRCodeSVG value={qrValue} size={150} level="M" />
+                    )}
                     {isPairing && (
                       <motion.div
                         animate={{ y: [0, 140, 0] }}

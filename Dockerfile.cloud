@@ -20,6 +20,7 @@ COPY cloud/ ./cloud/
 COPY core/ ./core/
 COPY memory/ ./memory/
 COPY config/ ./config/
+COPY UI/dist/ ./UI/dist/
 COPY cloud_server.py .
 COPY telegram_bot.py .
 

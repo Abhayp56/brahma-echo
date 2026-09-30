@@ -25,7 +25,7 @@ export const ChatInput: React.FC = () => {
     setIsSubmitted(true);
     setTimeout(() => setIsSubmitted(false), 500);
 
-    wsService.sendCommand(query.trim());
+    sendUserQuery(query.trim());
     setQuery('');
   };
 

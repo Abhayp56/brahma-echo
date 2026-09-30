@@ -1516,6 +1516,20 @@ async def websocket_laptop_node(websocket: WebSocket):
             dispatcher.unregister_laptop(websocket)
 
 
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_ui_spa_fallback(full_path: str):
+    """Fallback handler to serve static dist assets or SPA index.html for client-side routing."""
+    if not full_path or full_path.startswith("api/") or full_path.startswith("ws"):
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = BASE_DIR / "UI" / "dist" / full_path
+    if candidate.is_file():
+        return FileResponse(candidate)
+    index_path = BASE_DIR / "UI" / "dist" / "index.html"
+    if index_path.is_file():
+        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="Not found")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Brahma Echo Cloud Server")
     parser.add_argument("--host", default=server_config.get("host", "0.0.0.0"), help="Bind host")

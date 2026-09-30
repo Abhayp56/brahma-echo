@@ -53,6 +53,41 @@ class MockBriefingService implements IBriefingService {
     const now = new Date();
     this.briefing.time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     this.briefing.date = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+
+    // Fetch live news from Cloud Brain if available
+    try {
+      const newsRes = await fetch('/api/news?limit=3');
+      if (newsRes.ok) {
+        const newsData = await newsRes.json();
+        if (Array.isArray(newsData) && newsData.length > 0) {
+          this.briefing.headlines = newsData.map((item: any, idx: number) => ({
+            id: `news_${idx}`,
+            title: item.title || item.headline || 'Breaking News',
+            source: item.source || item.author || 'Global News',
+            category: item.category || 'Tech',
+            timeAgo: item.published_at || 'Recent',
+          }));
+        }
+      }
+    } catch (e) {
+      // Keep existing headlines on network error
+    }
+
+    // Fetch live weather from Cloud Brain if available
+    try {
+      const weatherRes = await fetch('/api/utility/weather');
+      if (weatherRes.ok) {
+        const wData = await weatherRes.json();
+        if (wData.temperature !== undefined) {
+          this.briefing.weatherTemp = `${Math.round(wData.temperature)}°C`;
+          this.briefing.weatherCondition = wData.condition || 'Clear Sky';
+          if (wData.location) this.briefing.location = wData.location;
+        }
+      }
+    } catch (e) {
+      // Keep existing weather on network error
+    }
+
     return { ...this.briefing };
   }
 
@@ -76,3 +111,4 @@ class MockBriefingService implements IBriefingService {
 }
 
 export const briefingService = new MockBriefingService();
+
