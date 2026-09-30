@@ -28,8 +28,9 @@ import qrcode
 import uvicorn
 import threading
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Response
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from core.distributed.protocol import (
     ProtocolTypes,
@@ -160,6 +161,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+ui_assets_dir = BASE_DIR / "UI" / "dist" / "assets"
+if ui_assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(ui_assets_dir)), name="assets")
 
 @app.middleware("http")
 async def head_request_middleware(request: Request, call_next):
@@ -698,10 +702,28 @@ async def on_startup():
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def get_web_ui():
     """Serves the browser-based Web Voice & Task interface."""
+    ui_path = BASE_DIR / "UI" / "dist" / "index.html"
+    if ui_path.exists():
+        return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
+        
     ui_path = BASE_DIR / "cloud" / "web_ui.html"
     if ui_path.exists():
         return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>JARVIS Cloud Brain Online</h1><p>Visit /api/status for JSON health metrics.</p>")
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def get_favicon():
+    file_path = BASE_DIR / "UI" / "dist" / "favicon.svg"
+    if file_path.exists():
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404)
+
+@app.get("/icons.svg", include_in_schema=False)
+async def get_icons():
+    file_path = BASE_DIR / "UI" / "dist" / "icons.svg"
+    if file_path.exists():
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

@@ -573,10 +573,6 @@ class DashboardServer:
 
     def _build_app(self) -> "FastAPI":
         app = FastAPI(docs_url=None, redoc_url=None)
-        
-        assets_dir = STATIC_DIR / "assets"
-        if assets_dir.exists():
-            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
         def _auth(req: Request) -> bool:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
@@ -595,11 +591,15 @@ class DashboardServer:
         async def login_page():
             return HTMLResponse(self._login_html)
 
+        ui_dist = BASE_DIR / "UI" / "dist"
+        if (ui_dist / "assets").exists():
+            app.mount("/assets", StaticFiles(directory=str(ui_dist / "assets")), name="ui_assets")
+
         @app.get("/", response_class=HTMLResponse)
         async def index():
-            # Auth is handled client-side via sessionStorage bearer token.
-            # Server-side header auth can't work here because browser navigations
-            # don't send custom headers (location.href doesn't carry Authorization).
+            ui_index = ui_dist / "index.html"
+            if ui_index.exists():
+                return HTMLResponse(content=ui_index.read_text(encoding="utf-8"))
             html = (self._app_html
                     .replace("__IP__", self._ip)
                     .replace("__PORT__", str(PORT)))
@@ -879,17 +879,6 @@ class DashboardServer:
                             await self._command_queue.put(t)
                             if self._wake_callback:
                                 self._wake_callback()
-                    elif data.get("type") == "action":
-                        action = data.get("action", "")
-                        if action == "gods_eye":
-                            import subprocess
-                            try:
-                                subprocess.Popen(["python", "gods-eye-view-main.py"], cwd=str(BASE_DIR))
-                            except Exception as e:
-                                print(f"Failed to start Gods Eye: {e}")
-                        elif action == "holographic_board":
-                            # To be implemented
-                            pass
             except WebSocketDisconnect:
                 pass
             finally:
