@@ -25,12 +25,18 @@ def _get_api_key() -> str:
 
 
 def _get_model(model_name: str):
-    from google import genai
-    _c = genai.Client(api_key=_get_api_key())
-
     class _W:
         def generate_content(self, contents):
-            return _c.models.generate_content(model=model_name, contents=contents)
+            from core.resilient_ai_client import resilient_ai
+            try:
+                res = resilient_ai.generate(str(contents))
+                class _Resp:
+                    text = res
+                return _Resp()
+            except Exception:
+                from google import genai
+                _c = genai.Client(api_key=_get_api_key(), http_options={"api_version": "v1beta"})
+                return _c.models.generate_content(model="models/gemini-3.5-flash-lite", contents=contents)
 
     return _W()
 

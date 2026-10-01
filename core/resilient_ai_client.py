@@ -155,7 +155,11 @@ class ResilientAIClient:
         if not self.groq_pool.keys:
             return None
 
-        from groq import Groq
+        try:
+            from groq import Groq
+        except ImportError as exc:
+            logger.warning(f"[ResilientAIClient] Groq package not installed ({exc}). Cascading to Gemini/OpenRouter.")
+            return None
 
         models_to_try = [
             "qwen/qwen3.8-27b",
@@ -214,8 +218,12 @@ class ResilientAIClient:
         if not self.gemini_pool.keys:
             return None
 
-        from google import genai
-        from google.genai import types
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            logger.warning(f"[ResilientAIClient] google-genai package not installed ({exc}). Cascading to OpenRouter.")
+            return None
 
         # Verified working models on user's API key
         models_to_try = [
