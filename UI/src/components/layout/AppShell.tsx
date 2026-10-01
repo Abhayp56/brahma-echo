@@ -5,7 +5,6 @@ import { SceneCanvas } from '../scene/SceneCanvas';
 import { DailyBriefing } from '../panels/DailyBriefing';
 import { SystemMetrics } from '../panels/SystemMetrics';
 import { Transcript } from '../panels/Transcript';
-import { MemoryBank } from '../panels/MemoryBank';
 import { ChatInput } from '../chat/ChatInput';
 import { AIReaderButton, AIReaderModal } from '../actions/AIReaderModal';
 import { GodsEyeButton } from '../actions/GodsEyeButton';
@@ -15,13 +14,11 @@ import { TelegramModal } from '../integrations/TelegramModal';
 import { WhatsAppModal } from '../integrations/WhatsAppModal';
 import { AndroidModal } from '../integrations/AndroidModal';
 import { ToastContainer } from '../ui/Toast';
-import { DevVoiceToggle } from '../ui/DevVoiceToggle';
 import { staggerContainer, panelSlideLeft, panelSlideRight, topBarVariant } from '../../lib/motion';
 
 /**
  * AppShell — root layout.
- * Stage 3: Removed CustomCursor. Locked to 100vh no-scroll.
- * Sidebar panels now wrap in a flex column with overflow hidden.
+ * Supabase memory card removed. Live Transcript expanded to full column height.
  */
 export const AppShell: React.FC = () => {
   return (
@@ -67,13 +64,12 @@ export const AppShell: React.FC = () => {
             </motion.div>
           </div>
 
-          {/* Right Column: Transcript & Memory Bank (no outer scroll) */}
+          {/* Right Column: Live Conversation Transcript (Expanded to fill entire column) */}
           <motion.div
             variants={panelSlideRight}
-            className="lg:col-span-3 flex flex-col gap-3 order-3 min-h-0 overflow-hidden"
+            className="lg:col-span-3 flex flex-col gap-3 order-3 min-h-0 h-full overflow-hidden"
           >
             <Transcript />
-            <MemoryBank />
           </motion.div>
         </div>
       </motion.main>
@@ -87,9 +83,6 @@ export const AppShell: React.FC = () => {
 
       {/* Toast Feedback */}
       <ToastContainer />
-
-      {/* Dev Voice Simulator Overlay (Press 'D' or click '?' to toggle) */}
-      <DevVoiceToggle />
     </div>
   );
 };

@@ -1,114 +1,178 @@
 import { IBriefingService } from './types';
-import { BriefingData, BriefingTodo } from '../types/arya';
+import { BriefingData, BriefingTodo, BriefingScheduleItem } from '../types/arya';
 import { generateId } from '../lib/utils';
 
-const INITIAL_BRIEFING: BriefingData = {
-  userName: 'Alex Mercer',
-  time: '',
-  date: '',
-  location: 'San Francisco, CA',
-  weatherTemp: '71°F',
-  weatherCondition: 'Clear & Sunny',
-  weatherIcon: 'sun',
-  headlines: [
-    {
-      id: 'news_1',
-      title: 'Quantum Computing breakthrough cuts LLM latency by 40%',
-      source: 'TechCrunch',
-      category: 'AI Tech',
-      timeAgo: '25m ago',
-    },
-    {
-      id: 'news_2',
-      title: 'Global tech indices rally following Q3 innovation reports',
-      source: 'Bloomberg',
-      category: 'Finance',
-      timeAgo: '1h ago',
-    },
-    {
-      id: 'news_3',
-      title: 'Next-gen autonomous desktop agents reach enterprise maturity',
-      source: 'Wired',
-      category: 'Automation',
-      timeAgo: '2h ago',
-    },
-  ],
-  todos: [
-    { id: 'todo_1', text: 'Review Q4 Architecture Proposal', completed: false, priority: 'high' },
-    { id: 'todo_2', text: 'Approve Telegram bot webhook deployment', completed: true, priority: 'medium' },
-    { id: 'todo_3', text: 'Confirm Android Companion voice bitrate settings', completed: false, priority: 'high' },
-    { id: 'todo_4', text: 'Sync with Sarah on Glassmorphism UI Polish', completed: false, priority: 'low' },
-  ],
-  schedule: [
-    { id: 'sch_1', time: '10:30 AM', title: 'Product Roadmap Sync', location: 'Virtual Room A', type: 'meeting' },
-    { id: 'sch_2', time: '02:00 PM', title: 'Desktop Agent Stress Test', location: 'Dev Environment', type: 'task' },
-    { id: 'sch_3', time: '04:15 PM', title: 'Voice Stream Call with Companion App', location: 'Mobile Bridge', type: 'call' },
-  ],
-};
+/**
+ * DailyBriefingService
+ * Persists briefings per calendar day (brahma_briefing_YYYY-MM-DD).
+ * Initializes once each day, carries over uncompleted tasks from yesterday,
+ * and fetches real-time weather from the Cloud Brain.
+ */
+class PersistentDailyBriefingService implements IBriefingService {
+  private getTodayKey(): string {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `brahma_briefing_${year}-${month}-${day}`;
+  }
 
-class MockBriefingService implements IBriefingService {
-  private briefing: BriefingData = { ...INITIAL_BRIEFING };
-
-  async getBriefing(): Promise<BriefingData> {
-    const now = new Date();
-    this.briefing.time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    this.briefing.date = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
-
-    // Fetch live news from Cloud Brain if available
+  private loadSavedBriefing(key: string): BriefingData | null {
     try {
-      const newsRes = await fetch('/api/news?limit=3');
-      if (newsRes.ok) {
-        const newsData = await newsRes.json();
-        if (Array.isArray(newsData) && newsData.length > 0) {
-          this.briefing.headlines = newsData.map((item: any, idx: number) => ({
-            id: `news_${idx}`,
-            title: item.title || item.headline || 'Breaking News',
-            source: item.source || item.author || 'Global News',
-            category: item.category || 'Tech',
-            timeAgo: item.published_at || 'Recent',
-          }));
+      const raw = localStorage.getItem(key);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {
+      console.warn('[Briefing] Failed to parse saved briefing:', e);
+    }
+    return null;
+  }
+
+  private saveBriefing(key: string, data: BriefingData): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.warn('[Briefing] Failed to save briefing to localStorage:', e);
+    }
+  }
+
+  private getPreviousUncompletedTodos(): BriefingTodo[] {
+    try {
+      const keys = Object.keys(localStorage)
+        .filter((k) => k.startsWith('brahma_briefing_'))
+        .sort()
+        .reverse();
+
+      const todayKey = this.getTodayKey();
+      for (const k of keys) {
+        if (k !== todayKey) {
+          const past = this.loadSavedBriefing(k);
+          if (past && Array.isArray(past.todos)) {
+            const unfinished = past.todos.filter((t) => !t.completed);
+            if (unfinished.length > 0) {
+              return unfinished;
+            }
+          }
         }
       }
     } catch (e) {
-      // Keep existing headlines on network error
+      // ignore
+    }
+    return [];
+  }
+
+  async getBriefing(): Promise<BriefingData> {
+    const todayKey = this.getTodayKey();
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+
+    let current = this.loadSavedBriefing(todayKey);
+
+    if (!current) {
+      // First run of the day: create brand new briefing entry for today
+      const rolledOver = this.getPreviousUncompletedTodos();
+      current = {
+        userName: 'Operator',
+        time: timeStr,
+        date: dateStr,
+        location: 'Local System',
+        weatherTemp: '--°C',
+        weatherCondition: 'Synchronizing...',
+        weatherIcon: 'sun',
+        headlines: [
+          {
+            id: 'h_1',
+            title: 'Arya Cloud Neural Brain & Local Orchestration Online',
+            source: 'Brahma Echo',
+            category: 'System',
+            timeAgo: 'Today',
+          },
+        ],
+        todos: rolledOver.length > 0 ? rolledOver : [
+          { id: generateId('todo'), text: 'Define daily system workflow & targets', completed: false, priority: 'high' }
+        ],
+        schedule: [],
+      };
+      this.saveBriefing(todayKey, current);
+    } else {
+      current.time = timeStr;
+      current.date = dateStr;
     }
 
-    // Fetch live weather from Cloud Brain if available
+    // Refresh live weather from Cloud Brain
     try {
       const weatherRes = await fetch('/api/utility/weather');
       if (weatherRes.ok) {
         const wData = await weatherRes.json();
         if (wData.temperature !== undefined) {
-          this.briefing.weatherTemp = `${Math.round(wData.temperature)}°C`;
-          this.briefing.weatherCondition = wData.condition || 'Clear Sky';
-          if (wData.location) this.briefing.location = wData.location;
+          current.weatherTemp = `${Math.round(wData.temperature)}°C`;
+          current.weatherCondition = wData.condition || 'Clear Sky';
+          if (wData.location) current.location = wData.location;
+          this.saveBriefing(todayKey, current);
         }
       }
     } catch (e) {
-      // Keep existing weather on network error
+      // Keep cached weather on network error
     }
 
-    return { ...this.briefing };
+    return { ...current };
   }
 
   async toggleTodo(id: string): Promise<boolean> {
-    this.briefing.todos = this.briefing.todos.map((todo) =>
+    const todayKey = this.getTodayKey();
+    const current = this.loadSavedBriefing(todayKey);
+    if (!current) return false;
+
+    current.todos = current.todos.map((todo) =>
       todo.id === id ? { ...todo, completed: !todo.completed } : todo
     );
+    this.saveBriefing(todayKey, current);
     return true;
   }
 
-  async addTodo(text: string): Promise<BriefingTodo> {
+  async addTodo(text: string, priority: 'low' | 'medium' | 'high' = 'medium'): Promise<BriefingTodo> {
+    const todayKey = this.getTodayKey();
+    let current = this.loadSavedBriefing(todayKey);
+    if (!current) {
+      current = await this.getBriefing();
+    }
+
     const newTodo: BriefingTodo = {
       id: generateId('todo'),
       text,
       completed: false,
-      priority: 'medium',
+      priority,
     };
-    this.briefing.todos.push(newTodo);
+    current.todos.push(newTodo);
+    this.saveBriefing(todayKey, current);
     return newTodo;
+  }
+
+  async deleteTodo(id: string): Promise<boolean> {
+    const todayKey = this.getTodayKey();
+    const current = this.loadSavedBriefing(todayKey);
+    if (!current) return false;
+
+    current.todos = current.todos.filter((t) => t.id !== id);
+    this.saveBriefing(todayKey, current);
+    return true;
+  }
+
+  async addScheduleItem(time: string, title: string, location?: string): Promise<void> {
+    const todayKey = this.getTodayKey();
+    const current = this.loadSavedBriefing(todayKey);
+    if (!current) return;
+
+    const newItem: BriefingScheduleItem = {
+      id: generateId('sch'),
+      time,
+      title,
+      location: location || 'Workspace',
+      type: 'task',
+    };
+    current.schedule.push(newItem);
+    this.saveBriefing(todayKey, current);
   }
 }
 
-export const briefingService = new MockBriefingService();
-
+export const briefingService = new PersistentDailyBriefingService();

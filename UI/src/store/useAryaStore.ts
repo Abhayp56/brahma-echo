@@ -68,6 +68,7 @@ interface AryaState {
   // Chat & Transcript Actions
   addTranscriptMessage: (msg: Omit<TranscriptMessage, 'id' | 'timestamp'>) => void;
   sendUserQuery: (text: string) => Promise<void>;
+  clearTranscript: () => void;
   triggerMockConversationStream: () => void;
 
   // Memory Actions
@@ -79,27 +80,13 @@ interface AryaState {
   // Briefing Actions
   loadBriefing: () => Promise<void>;
   toggleBriefingTodo: (id: string) => Promise<void>;
-  addBriefingTodo: (text: string) => Promise<void>;
+  addBriefingTodo: (text: string, priority?: 'low' | 'medium' | 'high') => Promise<void>;
+  deleteBriefingTodo: (id: string) => Promise<void>;
+  addBriefingSchedule: (time: string, title: string, location?: string) => Promise<void>;
 
   // Metrics
   setMetrics: (metrics: SystemMetricData) => void;
 }
-
-const INITIAL_TRANSCRIPT: TranscriptMessage[] = [
-  {
-    id: 'msg_1',
-    sender: 'system',
-    text: 'Arya Voice & Desktop Neural Link initialized. Standby for queries.',
-    timestamp: '09:00:00 AM',
-  },
-  {
-    id: 'msg_2',
-    sender: 'arya',
-    text: 'Good morning Alex. All desktop agents, memory banks, and schedule briefings are synchronized. How can I assist your workflow today?',
-    timestamp: '09:00:05 AM',
-    emotion: 'welcoming',
-  },
-];
 
 export const useAryaStore = create<AryaState>((set, get) => ({
   voiceState: 'idle',
@@ -108,10 +95,10 @@ export const useAryaStore = create<AryaState>((set, get) => ({
   toasts: [],
 
   desktopAgentState: {
-    connected: true,
-    version: 'v2.4.0-stable',
-    hostname: 'ALEX-WORKSTATION-X1',
-    lastHeartbeat: '1s ago',
+    connected: false,
+    version: 'v2.4.0',
+    hostname: 'OFFLINE',
+    lastHeartbeat: 'Disconnected',
   },
 
   integrations: {
@@ -120,7 +107,7 @@ export const useAryaStore = create<AryaState>((set, get) => ({
     android: { connected: false, statusText: 'Disconnected' },
   },
 
-  transcript: INITIAL_TRANSCRIPT,
+  transcript: [],
   memories: [],
   memorySearchQuery: '',
   briefing: null,
@@ -309,6 +296,8 @@ export const useAryaStore = create<AryaState>((set, get) => ({
     wsService.sendCommand(text);
   },
 
+  clearTranscript: () => set({ transcript: [] }),
+
   triggerMockConversationStream: () => {
     const sampleConversations = [
       {
@@ -383,8 +372,8 @@ export const useAryaStore = create<AryaState>((set, get) => ({
     set({ briefing });
   },
 
-  addBriefingTodo: async (text) => {
-    await briefingService.addTodo(text);
+  addBriefingTodo: async (text, priority) => {
+    await briefingService.addTodo(text, priority);
     const briefing = await briefingService.getBriefing();
     set({ briefing });
     get().addToast({
@@ -392,6 +381,27 @@ export const useAryaStore = create<AryaState>((set, get) => ({
       description: `New to-do created: "${text}"`,
       type: 'success',
     });
+  },
+
+  deleteBriefingTodo: async (id) => {
+    if (briefingService.deleteTodo) {
+      await briefingService.deleteTodo(id);
+      const briefing = await briefingService.getBriefing();
+      set({ briefing });
+    }
+  },
+
+  addBriefingSchedule: async (time, title, location) => {
+    if (briefingService.addScheduleItem) {
+      await briefingService.addScheduleItem(time, title, location);
+      const briefing = await briefingService.getBriefing();
+      set({ briefing });
+      get().addToast({
+        title: 'Schedule Updated',
+        description: `Added "${title}" at ${time}`,
+        type: 'success',
+      });
+    }
   },
 
   setMetrics: (metrics) => set({ metrics }),

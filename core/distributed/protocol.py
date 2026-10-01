@@ -40,6 +40,9 @@ class ProtocolTypes:
     # Workspace & UI Status (Laptop Worker -> Cloud or Cloud -> UI)
     WORKSPACE_UPDATE = "workspace_update"
 
+    # Metrics & Telemetry
+    SYSTEM_METRICS = "system_metrics"
+
     # Heartbeat
     PING = "ping"
     PONG = "pong"

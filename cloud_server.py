@@ -548,6 +548,26 @@ def broadcast_phone_status_to_web():
             pass
 
 
+def broadcast_desktop_status_to_web(connected: bool, info: Optional[Dict[str, Any]] = None):
+    """Broadcasts desktop agent connection status to all connected web clients."""
+    msg = json.dumps({"type": "desktop_status", "connected": connected, "info": info})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(msg))
+        except Exception:
+            pass
+
+
+def broadcast_metrics_to_web(metrics_data: Dict[str, Any]):
+    """Broadcasts system metrics from desktop agent to all connected web clients."""
+    msg = json.dumps({"type": "metrics", "data": metrics_data})
+    for client in list(web_clients):
+        try:
+            asyncio.create_task(client.send_text(msg))
+        except Exception:
+            pass
+
+
 main_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -1424,6 +1444,14 @@ async def websocket_web(websocket: WebSocket):
     await websocket.accept()
     web_clients.add(websocket)
     try:
+        # Send initial desktop agent status on connection
+        is_laptop_online = getattr(dispatcher, "is_connected", False)
+        laptop_info = getattr(dispatcher, "laptop_info", None)
+        await websocket.send_text(json.dumps({
+            "type": "desktop_status",
+            "connected": is_laptop_online,
+            "info": laptop_info,
+        }))
         while True:
             raw = await websocket.receive_text()
             data = json.loads(raw)
@@ -1479,6 +1507,7 @@ async def websocket_laptop_node(websocket: WebSocket):
         ack = build_message(ProtocolTypes.AUTH_ACK, {"status": "authenticated", "server": "Brahma Cloud Brain"})
         await websocket.send_text(ack.to_json())
         logger.info(f"Laptop authenticated successfully: {msg.payload.get('device_name', 'Desktop')}")
+        broadcast_desktop_status_to_web(True, msg.payload)
 
         # Step 2: Main message loop
         while True:
@@ -1502,6 +1531,12 @@ async def websocket_laptop_node(websocket: WebSocket):
                 if text and brain:
                     await brain.handle_text_command(text)
 
+            # Handle System Metrics from Laptop Worker
+            elif incoming.type in (ProtocolTypes.SYSTEM_METRICS, "system_metrics", "metrics"):
+                metrics_payload = incoming.payload if isinstance(incoming.payload, dict) else {}
+                if metrics_payload:
+                    broadcast_metrics_to_web(metrics_payload)
+
             # Handle Ping/Pong
             elif incoming.type == ProtocolTypes.PING:
                 pong = build_message(ProtocolTypes.PONG, request_id=incoming.request_id)
@@ -1514,6 +1549,7 @@ async def websocket_laptop_node(websocket: WebSocket):
     finally:
         if authenticated:
             dispatcher.unregister_laptop(websocket)
+            broadcast_desktop_status_to_web(False, None)
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

@@ -40,7 +40,9 @@ export interface IMemoryService {
 export interface IBriefingService {
   getBriefing(): Promise<BriefingData>;
   toggleTodo(id: string): Promise<boolean>;
-  addTodo(text: string): Promise<BriefingTodo>;
+  addTodo(text: string, priority?: 'low' | 'medium' | 'high'): Promise<BriefingTodo>;
+  deleteTodo?(id: string): Promise<boolean>;
+  addScheduleItem?(time: string, title: string, location?: string): Promise<void>;
 }
 
 export interface IMetricsService {
