@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -23,7 +24,7 @@ from core.resilient_ai_client import resilient_ai
 logger = logging.getLogger("LaudaAgent")
 
 PROJECTS_ROOT = Path.home() / "Desktop" / "JarvisProjects"
-MAX_FIX_ITERATIONS = 4
+MAX_FIX_ITERATIONS = 2
 
 
 def _clean_json_response(raw: str) -> str:
@@ -109,6 +110,8 @@ class LaudaCodeSynthesizer:
         system_prompt = (
             "You are the Laudacode Core Synthesizer. Write complete, robust, production-quality code. "
             "Never use placeholders like '# TODO' or '...rest of code'. Implement all logic fully. "
+            "IMPORTANT: If the script accepts interactive user console input (e.g., input() in Python or readline in Node), "
+            "always write it defensively so that non-interactive execution works (e.g., handle EOFError or default values). "
             "Output ONLY raw executable code. No markdown fences, no explanatory chat."
         )
 
@@ -136,19 +139,41 @@ class LaudaDiagnosticTester:
     def run_and_diagnose(
         run_command: str,
         project_dir: Path,
-        timeout: int = 30,
+        timeout: int = 10,
     ) -> Tuple[bool, str]:
+        simulated_input = "10\nyes\n1\n\n\n"
+        cmd_args: Optional[List[str]] = None
+        cmd_str = run_command.strip()
+        if cmd_str.startswith("python "):
+            script_args = cmd_str[7:].strip()
+            cmd_args = [sys.executable] + shlex.split(script_args, posix=False)
+
         try:
-            proc = subprocess.run(
-                run_command,
-                shell=True,
-                cwd=str(project_dir),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                encoding="utf-8",
-                errors="replace",
-            )
+            if cmd_args:
+                proc = subprocess.run(
+                    cmd_args,
+                    cwd=str(project_dir),
+                    input=simulated_input,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            else:
+                proc = subprocess.run(
+                    run_command,
+                    shell=True,
+                    cwd=str(project_dir),
+                    input=simulated_input,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout,
+                    encoding="utf-8",
+                    errors="replace",
+                )
             output = (proc.stdout or "").strip()
             stderr = (proc.stderr or "").strip()
             combined = f"{output}\n{stderr}".strip()
@@ -222,7 +247,7 @@ def run_laudacode_task(
     description: str,
     language: str = "python",
     project_name: str = "",
-    timeout: int = 35,
+    timeout: int = 10,
     player: Optional[Any] = None,
     speak: Optional[Callable[[str], None]] = None,
 ) -> str:

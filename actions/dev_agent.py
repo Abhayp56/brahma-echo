@@ -593,7 +593,7 @@ def dev_agent(
     description  = p.get("description", "").strip()
     language     = p.get("language", "python").strip()
     project_name = p.get("project_name", "").strip()
-    timeout      = int(p.get("timeout", 35))
+    timeout      = int(p.get("timeout", 10))
 
     if not description:
         return "Please describe the project you want me to build, sir."
