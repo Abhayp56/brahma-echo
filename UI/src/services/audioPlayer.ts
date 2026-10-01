@@ -28,12 +28,30 @@ class AudioPlayerService {
   }
 
   /**
+   * Explicitly unlock and resume the browser AudioContext on user gesture.
+   */
+  public unlock() {
+    this.init();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().then(() => {
+        console.log('[AudioPlayer] AudioContext resumed successfully.');
+      }).catch((err) => {
+        console.warn('[AudioPlayer] AudioContext resume failed:', err);
+      });
+    }
+  }
+
+  /**
    * Decodes and enqueues a base64-encoded 24kHz raw PCM16 audio chunk.
    */
   public playPcmChunk(b64Data: string) {
     try {
       this.init();
       if (!this.audioCtx || !this.analyser) return;
+
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
 
       this.isSpeaking = true;
       useAryaStore.getState().setVoiceState('speaking');
@@ -46,11 +64,15 @@ class AudioPlayerService {
         bytes[i] = binaryString.charCodeAt(i);
       }
 
-      // Convert PCM16 (Int16) to Float32 [-1.0, 1.0]
-      const int16Array = new Int16Array(bytes.buffer);
-      const float32Array = new Float32Array(int16Array.length);
-      for (let i = 0; i < int16Array.length; i++) {
-        float32Array[i] = int16Array[i] / 32768.0;
+      // Convert PCM16 (Int16, little-endian) to Float32 [-1.0, 1.0] safely using DataView
+      const sampleCount = Math.floor(len / 2);
+      if (sampleCount === 0) return;
+
+      const dataView = new DataView(bytes.buffer, bytes.byteOffset, sampleCount * 2);
+      const float32Array = new Float32Array(sampleCount);
+      for (let i = 0; i < sampleCount; i++) {
+        const int16 = dataView.getInt16(i * 2, true);
+        float32Array[i] = int16 / 32768.0;
       }
 
       // Create AudioBuffer (single channel, 24kHz)

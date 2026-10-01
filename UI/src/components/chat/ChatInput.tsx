@@ -5,6 +5,7 @@ import { useAryaStore } from '../../store/useAryaStore';
 import { useAudioLevel } from '../../hooks/useAudioLevel';
 import { cn } from '../../lib/utils';
 import { wsService } from '../../services/websocket';
+import { audioPlayer } from '../../services/audioPlayer';
 
 export const ChatInput: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -18,10 +19,16 @@ export const ChatInput: React.FC = () => {
 
   const audioLevelsRef = useAudioLevel();
 
+  const handleToggleMic = () => {
+    audioPlayer.unlock();
+    toggleMic();
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!query.trim()) return;
 
+    audioPlayer.unlock();
     setIsSubmitted(true);
     setTimeout(() => setIsSubmitted(false), 500);
 
@@ -64,7 +71,7 @@ export const ChatInput: React.FC = () => {
 
           <motion.button
             type="button"
-            onClick={toggleMic}
+            onClick={handleToggleMic}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={cn(

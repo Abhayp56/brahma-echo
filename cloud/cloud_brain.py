@@ -343,7 +343,7 @@ class CloudBrain:
         try:
             self._in_turn = True
             self.log(f"User (Text): {text}")
-            formatted_prompt = f"[User (Text Message)]: {text}\n(Instruction: Reply via text in clear, concise English for the boss.)"
+            formatted_prompt = f"[User]: {text}\n(Instruction: Speak your response out loud in your iconic JARVIS voice for the boss.)"
             await self.session.send(input=formatted_prompt, end_of_turn=True)
             if future:
                 try:
@@ -1073,9 +1073,21 @@ class CloudBrain:
                     while True:
                         async for response in self.session.receive():
                             # Handle audio output from Gemini
-                            if response.data:
+                            audio_bytes = response.data
+                            if not audio_bytes and response.server_content and response.server_content.model_turn:
+                                for part in response.server_content.model_turn.parts:
+                                    if getattr(part, "inline_data", None):
+                                        raw_d = part.inline_data.data
+                                        if isinstance(raw_d, bytes):
+                                            audio_bytes = (audio_bytes or b"") + raw_d
+                                        elif isinstance(raw_d, str):
+                                            try:
+                                                audio_bytes = (audio_bytes or b"") + base64.b64decode(raw_d)
+                                            except Exception:
+                                                pass
+                            if audio_bytes:
                                 if self.on_audio_out:
-                                    self.on_audio_out(response.data)
+                                    self.on_audio_out(audio_bytes)
 
                             # Handle transcriptions
                             if response.server_content:
