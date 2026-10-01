@@ -587,16 +587,30 @@ def dev_agent(
     description  = p.get("description", "").strip()
     language     = p.get("language", "python").strip()
     project_name = p.get("project_name", "").strip()
-    timeout      = int(p.get("timeout", 30))
+    timeout      = int(p.get("timeout", 35))
 
     if not description:
         return "Please describe the project you want me to build, sir."
 
-    return _build_project(
-        description  = description,
-        language     = language,
-        project_name = project_name,
-        timeout      = timeout,
-        speak        = speak,
-        player       = player,
-    )
+    # 1. Primary Engine: Laudacode Enterprise Desktop Agent (Groq / Gemini / OpenRouter multi-key pool)
+    try:
+        from actions.lauda_agent import run_laudacode_task
+        return run_laudacode_task(
+            description=description,
+            language=language,
+            project_name=project_name,
+            timeout=timeout,
+            player=player,
+            speak=speak,
+        )
+    except Exception as exc:
+        print(f"[DevAgent] Laudacode engine fallback due to: {exc}")
+        # 2. Fallback to legacy single-model builder if needed
+        return _build_project(
+            description=description,
+            language=language,
+            project_name=project_name,
+            timeout=timeout,
+            speak=speak,
+            player=player,
+        )

@@ -157,7 +157,7 @@ class LocalToolDispatcher:
             from actions.daily_briefing import compile_daily_briefing
             return lambda a: compile_daily_briefing(category=a.get("category", "all"))
 
-        elif tool_name == "dev_agent":
+        elif tool_name in {"dev_agent", "laudacode", "lauda_agent"}:
             from actions.dev_agent import dev_agent
             return lambda a: dev_agent(parameters=a, player=self.player, speak=self.speak_fn)
 
