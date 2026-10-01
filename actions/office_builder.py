@@ -361,19 +361,6 @@ def create_presentation(parameters: dict, player=None) -> str:
     slides = _slides_from_outline(parameters.get("outline"), _parse_json_arg(parameters.get("slides"), None))
     slides = slides[:20] if slides else slides
 
-    # Bypass template system entirely per user request
-    from actions.ppt_creative_generator import generate_presentation
-    result_path = generate_presentation(
-        slides=slides,
-        title=title,
-        subtitle=subtitle,
-        style=theme_hint,
-        output_path=output_path,
-        auto_open=auto_open,
-    )
-    return f"Presentation created: {result_path}"
-    # Fallback to the built-in creative, template-free generator below
-
     def add_textbox(slide, left, top, width, height, text, font_size=18, color_key="text", bold=False,
                     font_name="Aptos", align=None, italic=False, all_caps=False):
         color_hex = theme.get(color_key, color_key)
