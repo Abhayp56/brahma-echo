@@ -1210,6 +1210,143 @@ TOOL_DECLARATIONS = [
             },
             "required": ["action"]
         }
+    },
+    {
+        "name": "presentation_builder",
+        "description": (
+            "Creates editable, beautifully styled PowerPoint (.pptx) slide decks and presentations on the user's laptop. "
+            "Use this whenever the user asks to create, build, or generate a presentation, slides, or pitch deck."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "title": {
+                    "type": "STRING",
+                    "description": "Main title of the presentation."
+                },
+                "subtitle": {
+                    "type": "STRING",
+                    "description": "Optional subtitle or audience description."
+                },
+                "theme": {
+                    "type": "STRING",
+                    "description": "Visual theme style: 'neon' (cyber/tech/dark), 'corporate' (clean/professional), 'luxury' (gold/sleek), 'academic', 'sunset', or 'auto'."
+                },
+                "slides": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "title": {"type": "STRING", "description": "Slide title"},
+                            "bullets": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Bullet points for the slide"}
+                        },
+                        "required": ["title"]
+                    },
+                    "description": "List of slide specifications with titles and bullet points."
+                },
+                "outline": {
+                    "type": "STRING",
+                    "description": "Alternative natural language outline or topic description if structured slides array is not provided."
+                }
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "spreadsheet_builder",
+        "description": (
+            "Generates formatted Microsoft Excel (.xlsx) spreadsheets and workbooks on the user's laptop. "
+            "Includes auto-formatting, styled headers, alternating row colors, and optional charts. "
+            "Use this whenever the user asks to create an Excel sheet, budget, table, expense tracker, or spreadsheet."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "title": {
+                    "type": "STRING",
+                    "description": "Title of the workbook or expense report."
+                },
+                "headers": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "List of column header titles (e.g. ['Month', 'Category', 'Expense', 'Notes'])."
+                },
+                "rows": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "ARRAY",
+                        "items": {"type": "STRING"}
+                    },
+                    "description": "List of row data items matching the headers."
+                },
+                "auto_open": {
+                    "type": "BOOLEAN",
+                    "description": "Automatically open the spreadsheet in Excel when created (default: true)."
+                }
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "word_document",
+        "description": (
+            "Creates, reads, analyzes, and edits Microsoft Word (.docx) documents on the user's laptop. "
+            "Use this whenever the user asks to write a Word document, report, letter, summary, or inspect a .docx file."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "'create' (default) | 'read' | 'summarize' | 'extract_text' | 'open'"
+                },
+                "title": {
+                    "type": "STRING",
+                    "description": "Title of the Word document."
+                },
+                "file_path": {
+                    "type": "STRING",
+                    "description": "Path to an existing .docx file (for read/summarize/open)."
+                },
+                "content": {
+                    "type": "STRING",
+                    "description": "Text body or formatted content to write into the document."
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "pdf_document",
+        "description": (
+            "Generates publication-quality PDF documents with headings, bullet points, and tables on the user's laptop. "
+            "Use this whenever the user asks to generate, export, or create a PDF report or document."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "title": {
+                    "type": "STRING",
+                    "description": "Title of the PDF document."
+                },
+                "subtitle": {
+                    "type": "STRING",
+                    "description": "Optional subtitle."
+                },
+                "blocks": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "kind": {"type": "STRING", "description": "'heading' | 'bullet' | 'numbered' | 'body' | 'table'"},
+                            "text": {"type": "STRING", "description": "Text content for the block"}
+                        }
+                    },
+                    "description": "Ordered content blocks for the PDF."
+                }
+            },
+            "required": ["title"]
+        }
     }
 ]
 

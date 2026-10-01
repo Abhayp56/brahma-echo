@@ -412,6 +412,42 @@ def _execute_operator_action(action_data: Dict[str, Any]) -> str:
     return f"Processed action '{action}'"
 
 
+def _synthesize_automation_script(goal: str, sys_obs: Dict[str, Any]) -> str:
+    """
+    Use resilient_ai (Groq -> Gemini -> OpenRouter) with multi-key rotation to synthesize
+    a single-shot robust Python automation script. Uses PyAutoGUI, pywin32, webbrowser, or subprocess.
+    """
+    from core.resilient_ai_client import resilient_ai
+
+    system_prompt = (
+        "You are an expert Windows OS automation engineer. "
+        "Your task is to generate a complete, self-contained Python script to accomplish the user's goal on Windows. "
+        "Guidelines:\n"
+        "- Available libraries: pyautogui, subprocess, os, sys, time, ctypes, webbrowser, pathlib.\n"
+        "- Add short time.sleep(0.5) delays between UI actions (launching apps, focusing windows, typing, clicking).\n"
+        "- Wrap key operations in try-except blocks so the script is robust.\n"
+        "- If the goal is web navigation or searching, prefer webbrowser.open('https://...') or subprocess.Popen(['cmd.exe', '/c', 'start', 'chrome', ...], shell=True).\n"
+        "- If the goal is launching an app, use subprocess.Popen(['cmd.exe', '/c', f'start {app}'], shell=True) or pyautogui hotkeys.\n"
+        "- Output ONLY raw executable Python code. Do NOT wrap in markdown backticks or markdown formatting."
+    )
+
+    prompt = (
+        f"USER GOAL: {goal}\n\n"
+        f"CURRENT WINDOWS SYSTEM OBSERVATION:\n"
+        f"Active Window: {sys_obs.get('foreground_window')}\n"
+        f"Visible Windows: {json.dumps(sys_obs.get('visible_windows', []))}\n"
+        f"Working Directory: {sys_obs.get('working_directory')}\n\n"
+        "Generate the complete, safe, single-shot Python script to fulfill this goal:"
+    )
+
+    raw_code = resilient_ai.generate(prompt, system_prompt=system_prompt, temperature=0.1)
+
+    # Clean markdown code blocks if model returned them
+    code = re.sub(r"^```python\s*", "", raw_code, flags=re.MULTILINE)
+    code = re.sub(r"^```\s*", "", code, flags=re.MULTILINE)
+    return code.strip()
+
+
 def autonomous_operator(
     parameters: Dict[str, Any],
     player: Optional[Any] = None,
@@ -419,7 +455,7 @@ def autonomous_operator(
 ) -> str:
     """
     Main entry point for Laptop Execution Node.
-    Delegates 100% of decision-making to CloudBrain while executing tasks locally on the PC.
+    Uses resilient multi-AI script synthesis with automatic key rotation and provider fallback.
     """
     params = parameters or {}
     goal = str(params.get("goal", "")).strip()
@@ -443,15 +479,38 @@ def autonomous_operator(
             pyautogui.press("enter")
             time.sleep(1.5)
 
-    # 1. Check if goal is a direct PowerShell command or script
-    if goal.lower().startswith("powershell") or goal.lower().startswith("cmd") or "ping" in goal.lower() or "ipconfig" in goal.lower() or "get-process" in goal.lower():
+    # 1. Fast-path: Check if goal is a direct PowerShell / CMD command
+    lower_goal = goal.lower().strip()
+    if (
+        lower_goal.startswith("powershell")
+        or lower_goal.startswith("cmd")
+        or lower_goal.startswith("ping")
+        or lower_goal.startswith("ipconfig")
+        or lower_goal.startswith("get-process")
+    ):
         res = _execute_shell_cmd(goal)
         if player:
             player.write_log("[Operator] Executed shell command successfully.")
         return f"Laptop worker executed shell task successfully.\n{res}"
 
-    # 2. Otherwise execute as self-healing Python task
-    res = _execute_python_script(goal)
+    # 2. Check if goal is already raw Python code
+    if lower_goal.startswith("import ") or lower_goal.startswith("from ") or lower_goal.startswith("def "):
+        python_code = goal
+    else:
+        # 3. Synthesize single-shot automation script using Resilient AI (Groq -> Gemini -> OpenRouter)
+        if player:
+            player.write_log(f"[Operator] Synthesizing automation plan...")
+        sys_obs = _get_system_state_observation()
+        try:
+            python_code = _synthesize_automation_script(goal, sys_obs)
+            logger.info(f"Synthesized automation script:\n{python_code}")
+        except Exception as e:
+            logger.error(f"Failed to synthesize script: {e}")
+            return f"Autonomous operator failed to synthesize execution plan: {e}"
+
+    # 4. Execute synthesized script locally with auto-healing
+    res = _execute_python_script(python_code)
     if player:
         player.write_log("[Operator] Executed task on laptop.")
     return f"Laptop worker executed task successfully.\n{res}"
+

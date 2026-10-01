@@ -976,6 +976,11 @@ class CloudBrain:
             "attention_monitor",
             "pushup_counter",
             "calorie_counter",
+            "spotify_controller",
+            "presentation_builder",
+            "spreadsheet_builder",
+            "word_document",
+            "pdf_document",
         }
 
         clean_name = name.replace("_", " ")
@@ -1008,6 +1013,21 @@ class CloudBrain:
         elif name == "open_app":
             target = args.get("app_name") or "the application"
             progress_msg = f"Opening {target} on your laptop..."
+        elif name == "spotify_controller":
+            q = args.get("query") or "music"
+            progress_msg = f"Connecting to Spotify and queuing {q} on your laptop..."
+        elif name == "presentation_builder":
+            t = args.get("title") or "presentation"
+            progress_msg = f"Building presentation '{t}' on your laptop..."
+        elif name == "spreadsheet_builder":
+            t = args.get("title") or "spreadsheet"
+            progress_msg = f"Generating Excel workbook '{t}' on your laptop..."
+        elif name == "word_document":
+            t = args.get("title") or "document"
+            progress_msg = f"Working on Word document '{t}' on your laptop..."
+        elif name == "pdf_document":
+            t = args.get("title") or "document"
+            progress_msg = f"Exporting PDF document '{t}' on your laptop..."
         elif name == "computer_control":
             action = args.get("action", "action")
             progress_msg = f"Executing {action} on your computer..."
